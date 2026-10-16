@@ -951,6 +951,31 @@ function benchPress(g, cols, x, z) {
 }
 function punchBag(g, cols, x, z) { g.add(box(0.05, 0.6, 0.05, FM.metal(), x, 2.9, z)); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.1, 14), FM.plastic('#b03a2e')); b.position.set(x, 2.0, z); b.castShadow = true; g.add(b); solid(cols, x, z, 0.5, 0.5); }
 
+// --- market pieces ---
+function stall(g, cols, x, z, w, goods) {
+  table(g, cols, x, z, w, 1.0, FM.wood());
+  for (const sx of [-1, 1]) g.add(box(0.08, 2.4, 0.08, FM.wood(), x + sx * (w / 2 - 0.05), 1.2, z - 0.45));
+  g.add(box(w, 0.35, 0.03, FM.ankara(Math.round(x + 10) % 3), x, 2.25, z - 0.45, { cast: false })); // cloth banner (the hall has the roof)
+  for (let i = 0; i < 3; i++) goods(x - w / 3 + i * (w / 3), 0.8, z);
+}
+function clothStack(g, x, y, z) { for (let k = 0; k < 4; k++) g.add(box(0.7, 0.07, 0.5, M['in-adire' + (k % 3)] || (M['in-adire' + (k % 3)] = new THREE.MeshStandardMaterial({ map: TX.adire(k % 3), roughness: 0.85 })), x, y + 0.04 + k * 0.075, z)); }
+function produce(g, x, y, z, color) {
+  const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.24, 0.14, 16), mat('basin', { color: '#c0c6c8', metalness: 0.8, roughness: 0.35 })); basin.position.set(x, y + 0.07, z); g.add(basin);
+  for (let i = 0; i < 7; i++) { const o = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), mat('in-prod' + color, { color, roughness: 0.5 })); o.position.set(x + rr(-0.18, 0.18), y + 0.18, z + rr(-0.18, 0.18)); g.add(o); }
+}
+function clothRail(g, cols, x, z, n) {
+  const w = n * 0.9;
+  g.add(box(w + 0.2, 0.05, 0.05, FM.metal(), x, 2.3, z));
+  for (const sx of [-1, 1]) g.add(box(0.06, 2.3, 0.06, FM.metal(), x + sx * (w / 2 + 0.1), 1.15, z));
+  for (let i = 0; i < n; i++) g.add(box(0.8, 1.7, 0.02, M['in-adire' + (i % 3)] || (M['in-adire' + (i % 3)] = new THREE.MeshStandardMaterial({ map: TX.adire(i % 3), roughness: 0.85, side: THREE.DoubleSide })), x - w / 2 + 0.45 + i * 0.9, 1.4, z + 0.04));
+  solid(cols, x, z, w + 0.3, 0.3);
+}
+function dyeVat(g, cols, x, z) {
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.42, 0.7, 18), mat('in-clay', { color: '#7a4a2a', roughness: 0.9 })); pot.position.set(x, 0.35, z); pot.castShadow = true; g.add(pot);
+  const dye = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.46, 0.02, 18), mat('in-indigo', { color: '#14204f', roughness: 0.1, metalness: 0.2 })); dye.position.set(x, 0.68, z); g.add(dye);
+  solid(cols, x, z, 1.0, 1.0);
+}
+
 // Room shell: floor, back + side walls, knee walls at the front with a door gap at x = 0.
 function roomShell(g, cols, w, d, wallColor, floorMat, h = 3.2) {
   g.add(plane(w, d, floorMat, 0, 0.005, 0));
@@ -1147,6 +1172,64 @@ const INTERIOR = {
       npcIn(g, npcs, 'Officer Kehinde', { outfit: 'trace', skin: SKINS[2] }, 0, -3.0, 0);
     },
     spots: [{ x: 0, z: -1.1, icon: '🚔', name: 'Front desk', actions: [], extra: 'trace', blurb: 'Pay fines and collect impounded bikes.' }],
+  },
+  itoku: {
+    w: 14, d: 10, wall: '#d9c7a8', floor: () => mat('in-fl-mkt', { map: TX.concrete([4, 3]), roughness: 0.95 }),
+    build(g, cols, dyn, npcs) {
+      for (let i = 0; i < 3; i++) dyeVat(g, cols, -5.2 + i * 1.5, -4.0);
+      clothRail(g, cols, 3.0, -4.4, 6);
+      stall(g, cols, -4.0, 0.2, 3.0, (x, y, z) => clothStack(g, x, y, z));
+      stall(g, cols, 4.0, 0.2, 3.0, (x, y, z) => clothStack(g, x, y, z));
+      poster(g, ['ITOKU ADIRE', 'EGBA PRIDE • ABEOKUTA'], '#1b2a6b', '#e8f0ff', -2.2, 2.6, -4.98, 3.4, 0.9);
+      npcIn(g, npcs, 'Mama Adire', { female: true, outfit: 'adire', skin: SKINS[2] }, -4.0, -0.75, 0);
+      npcIn(g, npcs, 'Baba Aro (dyer)', { outfit: 'tee', skin: SKINS[0] }, -3.7, -3.0, Math.PI);
+      npcIn(g, npcs, 'Iya Bose', { female: true, outfit: 'trader', skin: SKINS[1] }, 4.0, -0.75, 0);
+      npcIn(g, npcs, 'Aunty Funmi (buyer)', { female: true, outfit: 'anago', skin: SKINS[3] }, 1.2, 2.2, -0.5);
+    },
+    spots: [
+      { x: -4.0, z: 1.6, icon: '🧵', name: "Dyers' stall", actions: ['adire-buy'], blurb: 'Buy fresh adire straight from the dyers. Prices change every day.' },
+      { x: 4.0, z: 1.6, icon: '🛍️', name: 'Sell to buyers', actions: ['adire-local'], blurb: 'Sell your adire to buyers in the market.' },
+    ],
+  },
+  kuto: {
+    w: 14, d: 10, wall: '#e8d8b8', floor: () => mat('in-fl-mkt', { map: TX.concrete([4, 3]), roughness: 0.95 }),
+    build(g, cols, dyn, npcs) {
+      stall(g, cols, -4.5, -3.2, 3.0, (x, y, z) => produce(g, x, y, z, '#c0392b'));
+      stall(g, cols, 0, -3.2, 3.0, (x, y, z) => produce(g, x, y, z, '#e67e22'));
+      stall(g, cols, 4.5, -3.2, 3.0, (x, y, z) => clothStack(g, x, y, z));
+      shelf(g, cols, -6.3, 0.5, 2.4, Math.PI / 2, 3);
+      clothRail(g, cols, 4.6, 0.6, 3);
+      poster(g, ['KUTO MARKET', 'BUY • SELL • HUSTLE'], '#0b6e4f', '#ffd54a', 0, 2.7, -4.98, 3.2, 0.9);
+      npcIn(g, npcs, 'Iya Rasheed', { female: true, outfit: 'trader', skin: SKINS[1] }, -4.5, -4.1, 0);
+      npcIn(g, npcs, 'Mama Pepper', { female: true, outfit: 'trader', skin: SKINS[2] }, 0, -4.1, 0);
+      npcIn(g, npcs, 'Alhaja Kudi', { female: true, outfit: 'anago', skin: SKINS[0] }, 4.5, -4.1, 0);
+      npcIn(g, npcs, 'Sule (alaru)', { outfit: 'tee', skin: SKINS[3], tray: true }, -1.8, 1.4, 0.6);
+    },
+    spots: [
+      { x: 4.5, z: -1.6, icon: '🛍️', name: 'Adire buyers', actions: ['adire-local'], blurb: 'Sell your adire around Kuto.' },
+      { x: -2.2, z: -1.6, icon: '💪', name: 'Market errands', actions: ['hustle'], blurb: 'Carry loads, run errands and do small hustles for traders.' },
+      { x: 3.0, z: 2.2, icon: '📸', name: 'Content corner', actions: ['content-adire'], blurb: 'Shoot an adire fashion video against the cloth rails.' },
+    ],
+  },
+  'motor-park': {
+    w: 16, d: 11, wall: '#cfc8b8', floor: () => mat('in-fl-park', { map: TX.asphalt([3, 2]), roughness: 0.9 }),
+    build(g, cols, dyn, npcs) {
+      const bus = danfo(); bus.position.set(-3.0, 0, -3.4); g.add(bus); solid(cols, -3.0, -3.4, 5.4, 2.4);
+      poster(g, ['LAGOS ₦4,500', 'OSHODI • BALOGUN • IKEJA'], '#f2c00f', '#111', -3.0, 2.9, -5.48, 3.6, 0.9);
+      counter(g, cols, 4.8, -3.0, 3.0, 0.9, '#2c3e50');
+      poster(g, ['TICKETS'], '#c0392b', '#fff', 4.8, 2.4, -5.48, 1.6, 0.6);
+      for (const z of [0.6, 2.2]) bench(g, cols, 3.6, z, 3.0);
+      g.add(box(0.08, 2.2, 1, mat('door', { map: TX.wood(), roughness: 0.6 }), -7.95, 1.1, 3.4));
+      poster(g, ['TOILET ₦100'], '#fff', '#2c3e50', -7.95, 2.5, 3.4, 1.2, 0.4, Math.PI / 2);
+      npcIn(g, npcs, 'Agbero Taiwo', { outfit: 'tee', skin: SKINS[0] }, 0.2, -2.4, -0.8);
+      npcIn(g, npcs, 'Driver Sunday', { outfit: 'tee', skin: SKINS[3] }, -5.9, -2.2, 0.4);
+      npcIn(g, npcs, 'Ticket lady', { female: true, outfit: 'anago', skin: SKINS[1] }, 4.8, -3.8, 0);
+      npcIn(g, npcs, 'Mama Put-put', { female: true, outfit: 'trader', skin: SKINS[2], tray: true }, -1.0, 2.0, 0.3);
+    },
+    spots: [
+      { x: 4.8, z: -1.6, icon: '🎫', name: 'Ticket booth (Lagos run)', actions: ['adire-lagos'], blurb: '"Lagos, Lagos! Oshodi, Balogun!" Carry your adire to Lagos for the best price.' },
+      { x: -6.9, z: 3.4, icon: '🚻', name: 'Toilet', actions: ['public-toilet'], blurb: '₦100 to use the motor park toilet.' },
+    ],
   },
 };
 
@@ -1554,6 +1637,7 @@ export function travelTo(id) {
   const p = PLACES3D.find((q) => q.id === id);
   if (!p || !player) return false;
   if (inside) exitBuilding();
+  nearId = null; if (hooks) hooks.near(null);
   const road = ROADS.find((r) => r.name === p.road);
   const towardRoad = road.axis === 'x' ? Math.sign(road.at - p.z) : Math.sign(road.at - p.x);
   const x = road.axis === 'x' ? p.x : p.x + towardRoad * 2.4;
