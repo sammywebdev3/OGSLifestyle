@@ -18,6 +18,50 @@ You can also open `index.html` directly, or host the folder on GitHub Pages
 (Settings → Pages → deploy from branch).
 The map and live data need an internet connection.
 
+## How it plays
+
+Like *Lagos Life*, you live **day by day** on a ticking clock. Press **▶** to start time and pick
+1×, 3× or 10× speed. You keep five needs up: **hunger, energy, hygiene, fun and social**. Do that by
+eating mama's food, amala at a buka or bread and akara, bathing, sleeping, going to school or work,
+gisting at the junction, watching football at a viewing centre, clubbing and more. Pay arrives every
+**Saturday**, and so do rent and bills. A year is 28 days (4 weeks). When it ends you have a birthday,
+and the life-sim side moves on: school years, WAEC/JAMB, promotions, ageing and family.
+
+- **🤖 Auto-routine:** when it's on, your character eats, sleeps and goes to school or work by
+  themself, and you can still take over at any time. **⏭ Day** and **🎂 Year** fast-forward until
+  something needs you.
+- **Street encounters:** random moments interrupt the day and you choose how to react. They include
+  police checkpoints, area boys, "one chance" buses, a wrong ₦250k transfer, a prophecy and a "seed",
+  job leads, a crush at the bus stop, going viral, a "sure banker" bet, a fake iPhone at Sango,
+  lecturers' "sorting", school bullies, OTP scammers, quit notices, kidnap threats, lotto and more.
+- **Born into anything:** pick your start or let fate decide.
+  - **Poor:** a face-me-I-face-you room.
+  - **Middle-class.**
+  - **Comfortable.**
+  - **Rich:** a nepo baby.
+  - **Politician's child:** your parent is a Senator, Commissioner or LG Chairman. Once a year
+    "Daddy" can make a call to get you a job or out of a police cell. You also get kidnapping threats
+    and EFCC wahala.
+- **Crime & prison:**
+  - 10 crimes, from shoplifting to armed robbery, each with its own payout and arrest risk.
+    **Police heat** rises with every job.
+  - When you're arrested, you can "settle" the officers, hire a lawyer, take legal aid, run, or call
+    Daddy.
+  - In court, you can plead guilty, fight the charge, or try to bribe the judge.
+  - Sentences are served in real Ogun custodial centres (Ibara in Abeokuta, Ilaro, Ijebu-Ode,
+    Sagamu). Prison life has its own day: workshop work (you can learn tailoring), NOUN study,
+    fellowship, cell gangs, phone bribes, parole, escape attempts, jailbreak plots and the
+    Governor's pardon.
+  - Escapees become **wanted fugitives**.
+- **Politics:**
+  - Join a party (fictional ones, to stay neutral), or decamp to another.
+  - Buy a nomination form and win a primary, by "settling" the delegates or on popularity.
+  - Campaign with rallies, rice palliatives, door-to-door visits, OGBC radio interviews, thugs or a
+    godfather.
+  - Win local or general elections, all the way up to **Governor of Ogun State**.
+  - In office, you choose whether to build projects or pocket the allowance. The EFCC, election
+    tribunals and impeachments can follow.
+
 ## Features
 
 - **Real map**: Leaflet with OpenStreetMap tiles and the real Ogun State boundary.
@@ -61,7 +105,9 @@ The map and live data need an internet connection.
 | File | Purpose |
 | --- | --- |
 | `js/data.js` | Towns, LGAs, institutions, schools, places, jobs, assets, names |
-| `js/engine.js` | Game rules. Pure functions with no DOM, so they also run in Node |
+| `js/engine.js` | Core life-sim rules (years, school, jobs, family, events). Pure functions with no DOM |
+| `js/life.js` | Daily clock, needs, actions, auto-routine, weekly pay/rent, street encounters |
+| `js/society.js` | Crime, police, courts, prison life, connections, parties and elections |
 | `js/map.js` | Leaflet map, live OSM layer and search |
 | `js/ui.js` | Rendering and input handling |
 | `tests/` | Engine tests (`npm test`, Node 18+) |

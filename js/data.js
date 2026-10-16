@@ -204,6 +204,45 @@
     { id: 'abk-tech-hub', name: 'Abeokuta Tech Hub', kind: 'workplace', town: 'abeokuta', lat: 7.15, lng: 3.375, fee: 0, blurb: 'Startups, remote devs and co-working.' },
     { id: 'gateway-airport', name: 'Gateway International Airport, Iperu-Ilishan', kind: 'workplace', town: 'iperu', lat: 6.92, lng: 3.7, fee: 0, blurb: 'Ogun State\'s new airport.' },
     { id: 'odeda-farms', name: 'Odeda Farm Settlement', kind: 'workplace', town: 'odeda', lat: 7.22, lng: 3.52, fee: 0, blurb: 'Poultry, cassava and fish farms.' },
+    // Custodial centres (prisons)
+    { id: 'ibara-prison', name: 'Ibara Custodial Centre, Abeokuta', kind: 'prison', town: 'abeokuta', lat: 7.138, lng: 3.33, fee: 0, blurb: 'Medium-security custodial centre in Abeokuta.' },
+    { id: 'ilaro-prison', name: 'Ilaro Custodial Centre', kind: 'prison', town: 'ilaro', lat: 6.885, lng: 3.008, fee: 0, blurb: 'Custodial centre serving Yewaland.' },
+    { id: 'ijebu-prison', name: 'Ijebu-Ode Custodial Centre', kind: 'prison', town: 'ijebu-ode', lat: 6.814, lng: 3.928, fee: 0, blurb: 'Custodial centre serving Ijebuland.' },
+    { id: 'sagamu-prison', name: 'Sagamu Custodial Centre', kind: 'prison', town: 'sagamu', lat: 6.838, lng: 3.656, fee: 0, blurb: 'Custodial centre serving Remo.' },
+  ];
+
+  /*
+   * Street crimes. reward = [min, max] ₦; risk = base chance of being caught;
+   * heat = how much police attention it draws; years = sentence range.
+   */
+  const CRIMES = [
+    { id: 'shoplift', name: 'Shoplift from a supermarket', minAge: 10, hours: 1, reward: [3000, 25000], risk: 0.15, heat: 6, years: [0.5, 1], karma: -3 },
+    { id: 'pickpocket', name: 'Pickpocket at a bus park', minAge: 12, hours: 2, reward: [5000, 45000], risk: 0.14, heat: 8, years: [0.5, 2], karma: -4 },
+    { id: 'phone-snatch', name: 'Snatch phones in traffic', minAge: 14, hours: 2, reward: [40000, 180000], risk: 0.2, heat: 12, years: [1, 3], karma: -6, injury: 0.1 },
+    { id: 'scam', name: 'Run online romance scams (yahoo)', minAge: 15, hours: 6, reward: [0, 900000], risk: 0.08, heat: 10, years: [2, 7], karma: -8, needsPhone: true },
+    { id: 'drugs', name: 'Sell weed around the junction', minAge: 16, hours: 4, reward: [30000, 250000], risk: 0.18, heat: 12, years: [2, 5], karma: -6 },
+    { id: 'burglary', name: 'Burgle a house at night', minAge: 16, hours: 4, reward: [80000, 700000], risk: 0.25, heat: 18, years: [3, 7], karma: -10, night: true, injury: 0.15 },
+    { id: 'smuggle', name: 'Smuggle bags of rice across Idiroko border', minAge: 18, hours: 8, reward: [150000, 900000], risk: 0.2, heat: 15, years: [2, 5], karma: -4 },
+    { id: 'fuel-theft', name: 'Siphon fuel from a pipeline (very dangerous)', minAge: 18, hours: 6, reward: [200000, 1500000], risk: 0.22, heat: 20, years: [5, 10], karma: -8, injury: 0.25 },
+    { id: 'embezzle', name: "Embezzle from your employer's accounts", minAge: 18, hours: 2, reward: [0, 0], risk: 0.25, heat: 15, years: [3, 10], karma: -10, needsJob: true },
+    { id: 'robbery', name: 'Armed robbery', minAge: 18, hours: 5, reward: [300000, 3500000], risk: 0.35, heat: 40, years: [10, 21], karma: -25, injury: 0.35 },
+  ];
+
+  // Elective offices. cost = rough campaign budget; popularity = what a typical rival has.
+  const OFFICES = [
+    { id: 'councillor', name: 'Ward Councillor', level: 1, minAge: 25, cost: 3000000, popularity: 30, salary: 6000000, cycle: 'local' },
+    { id: 'lg-chairman', name: 'Local Government Chairman', level: 2, minAge: 30, cost: 40000000, popularity: 45, salary: 25000000, cycle: 'local' },
+    { id: 'assembly', name: 'Member, Ogun State House of Assembly', level: 2, minAge: 30, cost: 60000000, popularity: 50, salary: 40000000, cycle: 'general' },
+    { id: 'reps', name: 'Member, House of Representatives', level: 3, minAge: 30, cost: 150000000, popularity: 60, salary: 90000000, cycle: 'general' },
+    { id: 'senator', name: 'Senator', level: 4, minAge: 35, cost: 400000000, popularity: 70, salary: 180000000, cycle: 'general' },
+    { id: 'governor', name: 'Governor of Ogun State', level: 5, minAge: 35, cost: 2000000000, popularity: 80, salary: 300000000, cycle: 'general' },
+  ];
+
+  // Fictional parties, so the game stays neutral.
+  const PARTIES = [
+    { id: 'ppc', name: 'Progressive People\'s Congress (PPC)', color: '#1f6feb' },
+    { id: 'nda', name: 'National Democratic Alliance (NDA)', color: '#d1242f' },
+    { id: 'lup', name: 'Labour Unity Party (LUP)', color: '#1a7f37' },
   ];
 
   /*
@@ -301,5 +340,6 @@
   return {
     OGUN_CENTER, OGUN_BOUNDS, LGAS, TOWNS, COURSES, LEVEL_RANK, INSTITUTIONS,
     SECONDARY, PLACES, JOBS, SKILLS, ASSETS, NAMES, NIGERIAN_STATES, TRANSPORT,
+    CRIMES, OFFICES, PARTIES,
   };
 });

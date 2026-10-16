@@ -15,7 +15,7 @@
   const KIND_ICON = {
     university: '🎓', polytechnic: '🏛️', coe: '📘', health: '⚕️',
     secondary: '🏫', landmark: '🗿', market: '🛍️', worship: '🛐',
-    hospital: '🏥', workplace: '🏭', leisure: '🎉',
+    hospital: '🏥', workplace: '🏭', leisure: '🎉', prison: '🔒',
   };
 
   let map, layers, meMarker, liveLayer, searchMarker, popupBuilder;
@@ -40,6 +40,7 @@
       '🏥 Hospitals': L.layerGroup(),
       '🗿 Landmarks, markets & worship': L.layerGroup(),
       '🏭 Workplaces': L.layerGroup(),
+      '🔒 Prisons': L.layerGroup(),
     };
     liveLayer = L.layerGroup();
 
@@ -62,7 +63,7 @@
         .addTo(layers['🏫 Secondary schools']);
     }
     for (const p of D.PLACES) {
-      const group = p.kind === 'hospital' ? '🏥 Hospitals' : p.kind === 'workplace' ? '🏭 Workplaces' : '🗿 Landmarks, markets & worship';
+      const group = p.kind === 'hospital' ? '🏥 Hospitals' : p.kind === 'workplace' ? '🏭 Workplaces' : p.kind === 'prison' ? '🔒 Prisons' : '🗿 Landmarks, markets & worship';
       L.marker([p.lat, p.lng], { icon: emojiIcon(KIND_ICON[p.kind]), title: p.name })
         .bindPopup(() => popupBuilder('place', p.id), { maxWidth: 320 })
         .addTo(layers[group]);

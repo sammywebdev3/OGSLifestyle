@@ -24,17 +24,20 @@
   <section class="stats" id="stats"></section>
 
   <nav class="tabs" id="tabs">
-    <button data-tab="life" class="active">📜 Life</button>
+    <button data-tab="today" class="active">☀️ Today</button>
+    <button data-tab="life">📜 Life</button>
     <button data-tab="map">🗺️ Map</button>
     <button data-tab="education">🎓 School</button>
     <button data-tab="career">💼 Career</button>
     <button data-tab="people">👪 People</button>
-    <button data-tab="activities">🎯 Activities</button>
-    <button data-tab="assets">🏠 Assets</button>
+    <button data-tab="street">🦹 Street</button>
+    <button data-tab="politics">🗳️ Politics</button>
+    <button data-tab="assets">🏠 Home & Assets</button>
   </nav>
 
   <main id="main">
-    <section class="panel active" id="panel-life"></section>
+    <section class="panel active" id="panel-today"></section>
+    <section class="panel" id="panel-life"></section>
     <section class="panel" id="panel-map">
       <div class="map-tools">
         <form id="map-search" class="map-search" autocomplete="off">
@@ -51,12 +54,21 @@
     <section class="panel" id="panel-education"></section>
     <section class="panel" id="panel-career"></section>
     <section class="panel" id="panel-people"></section>
-    <section class="panel" id="panel-activities"></section>
+    <section class="panel" id="panel-street"></section>
+    <section class="panel" id="panel-politics"></section>
     <section class="panel" id="panel-assets"></section>
   </main>
 
   <footer class="age-bar">
-    <button id="age-btn" class="age-btn">＋ Age a year</button>
+    <div class="timebar" id="timebar">
+      <button id="play-btn" class="tb-play" title="Play / pause the clock">▶</button>
+      <div class="tb-clock"><b id="tb-time">08:00</b><span id="tb-date"></span></div>
+      <div class="tb-speed" role="group" aria-label="Speed">
+        <button data-speed="1" class="on">1×</button><button data-speed="3">3×</button><button data-speed="10">10×</button>
+      </div>
+      <button id="day-btn" class="tb-btn" title="Live the rest of today on auto-routine">⏭ Day</button>
+      <button id="year-btn" class="tb-btn" title="Live on auto-routine until your next birthday">🎂 Year</button>
+    </div>
   </footer>
 
   <div class="modal" id="modal" hidden>
@@ -67,6 +79,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="js/data.js"></script>
   <script src="js/engine.js"></script>
+  <script src="js/life.js"></script>
+  <script src="js/society.js"></script>
   <script src="js/map.js"></script>
   <script src="js/ui.js"></script>
 </body>

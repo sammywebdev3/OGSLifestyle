@@ -16,7 +16,11 @@
   'use strict';
 
   const START_YEAR = 2026;
-  const SAVE_VERSION = 1;
+  const SAVE_VERSION = 2;
+  // Daily mode: a game year is 4 weeks of 7 days (each week stands for a
+  // quarter of the year), with 20 work/school days.
+  const DAYS_PER_YEAR = 28;
+  const WORKDAYS_PER_YEAR = 20;
   const PRIMARY_START_AGE = 5;
   const NYSC_ALLOWANCE = 77000;
 
@@ -94,6 +98,13 @@
 
   function fullName(p) { return p.first + ' ' + p.last; }
 
+  function oncePerDay(s, key) {
+    s.dayActs = s.dayActs || {};
+    if (s.dayActs[key]) return false;
+    s.dayActs[key] = true;
+    return true;
+  }
+
   function oncePerYear(s, key) {
     if (s.yearActs[key]) return false;
     s.yearActs[key] = true;
@@ -103,7 +114,7 @@
   function canAct(s) {
     if (!s.alive) return 'Game over.';
     if (s.ended) return 'This life has ended.';
-    if (s.prison > 0) return 'You are in prison.';
+    if (s.jail) return 'You are in prison.';
     if (s.events.length) return 'Respond to the current event first.';
     return null;
   }
@@ -111,11 +122,13 @@
   // ---------- family wealth ----------
 
   const WEALTH = {
-    poor: { label: 'Struggling', pocket: 20000, feeCap: 120000, inherit: 200000 },
-    average: { label: 'Average', pocket: 60000, feeCap: 450000, inherit: 1500000 },
-    comfortable: { label: 'Comfortable', pocket: 200000, feeCap: 2000000, inherit: 10000000 },
-    rich: { label: 'Wealthy', pocket: 1000000, feeCap: 10000000, inherit: 60000000 },
+    poor: { label: 'Poor', desc: 'Face-me-I-face-you room, one meal a day some weeks.', pocket: 20000, feeCap: 120000, inherit: 200000 },
+    average: { label: 'Middle-class', desc: 'Civil-servant parents, a flat and a Corolla.', pocket: 60000, feeCap: 450000, inherit: 1500000 },
+    comfortable: { label: 'Comfortable', desc: 'Business owners with a duplex and a driver.', pocket: 200000, feeCap: 2000000, inherit: 10000000 },
+    rich: { label: 'Rich (Nepo baby)', desc: 'Old money: estates, foreign holidays, private schools.', pocket: 1000000, feeCap: 10000000, inherit: 60000000 },
+    politician: { label: "Politician's child", desc: 'Your parent holds public office. Connections open doors, and enemies watch.', pocket: 1500000, feeCap: 20000000, inherit: 150000000 },
   };
+  const POLITICIAN_TITLES = ['Senator', 'Honourable Member (House of Reps)', 'Commissioner for Works', 'LGA Chairman', 'Speaker, Ogun State House of Assembly'];
 
   function parentsAlive(s) {
     return s.relations.some((r) => (r.role === 'mother' || r.role === 'father') && r.alive);
@@ -171,7 +184,12 @@
       job: null, jobHistory: [], pension: 0,
       relations: [], assets: [], visited: [],
       flags: {}, yearActs: {},
-      prison: 0, record: [],
+      record: [], jail: null, heat: 0, crimes: { done: 0, caught: 0 },
+      politics: { party: null, office: null, popularity: 0, candidacy: null, terms: 0, rigged: false, embezzled: 0 },
+      daily: true,
+      clock: { day: 1, dow: 0, min: 8 * 60 },
+      needs: { hunger: 80, energy: 90, hygiene: 85, fun: 70, social: 70 },
+      dayActs: {}, auto: true,
       events: [],
       log: [],
     };
@@ -182,7 +200,7 @@
     s.stats.smarts = randInt(s, 15, 90);
     s.stats.looks = randInt(s, 20, 90);
 
-    const w = opts.wealth && WEALTH[opts.wealth] ? opts.wealth : pick(s, ['poor', 'poor', 'average', 'average', 'average', 'comfortable', 'comfortable', 'rich']);
+    const w = opts.wealth && WEALTH[opts.wealth] ? opts.wealth : pick(s, ['poor', 'poor', 'poor', 'average', 'average', 'average', 'comfortable', 'comfortable', 'rich', 'politician']);
     s.family.wealth = w;
 
     s.relations.push(newPerson(s, 'father', 'male', randInt(s, 26, 48), { last: s.last }));
@@ -193,9 +211,25 @@
       s.relations.push(newPerson(s, 'sibling', g, randInt(s, 1, 12), { last: s.last }));
     }
 
+    if (w === 'politician') {
+      const role = pick(s, ['father', 'father', 'mother']);
+      const title = pick(s, POLITICIAN_TITLES);
+      s.family.politician = { role, title };
+      const par = s.relations.find((r) => r.role === role);
+      par.title = title;
+      s.politics.popularity = 15;
+    }
+
     const town = TOWN[s.town];
     log(s, `You were born in ${town.name}, ${lgaName(town.lga)} LGA, Ogun State, in ${s.year}. Your name is ${s.first} ${s.last}.`, 'milestone');
-    log(s, `Your family is ${WEALTH[w].label.toLowerCase()}. Welcome to the Gateway State!`, 'info');
+    const intro = {
+      poor: 'Your family is poor. Your parents hustle every day just to feed the family.',
+      average: 'You were born into a middle-class family. Not rich, not suffering.',
+      comfortable: 'Your family is comfortable: a big house, a driver and generator diesel that never finishes.',
+      rich: 'You were born with a silver spoon. Your family is rich!',
+      politician: s.family.politician ? `Your ${s.family.politician.role} is ${s.family.politician.title} ${s.relations.find((r) => r.role === s.family.politician.role).first} ${s.last}. Politics runs in the family.` : '',
+    }[w];
+    log(s, intro + ' Welcome to the Gateway State!', 'info');
     return s;
   }
 
@@ -208,7 +242,8 @@
 
   function ageUp(s) {
     if (!s.alive || s.ended) return false;
-    if (s.events.length) return false;
+    // In daily mode the birthday arrives with the calendar, even if events are queued.
+    if (s.events.length && !s.daily) return false;
 
     s.age++;
     s.year++;
@@ -216,7 +251,7 @@
     log(s, `Age ${s.age} · ${s.year}`, 'year');
 
     yearRelations(s);
-    if (s.prison > 0) {
+    if (s.jail) {
       yearPrison(s);
     } else {
       yearEducation(s);
@@ -227,9 +262,10 @@
     yearFinance(s);
     yearAssets(s);
     yearHealth(s);
+    for (const fn of YEAR_HOOKS) fn(s);
     if (deathCheck(s)) return true;
 
-    if (s.prison <= 0) {
+    if (!s.jail) {
       scriptedEvents(s);
       if (!s.events.length && chance(s, 0.7)) randomEvent(s);
     }
@@ -270,16 +306,45 @@
   }
 
   function yearPrison(s) {
-    s.prison--;
-    stat(s, 'happiness', -10);
-    stat(s, 'health', -randInt(s, 2, 6));
-    if (s.prison <= 0) {
-      s.prison = 0;
-      log(s, 'You have been released from prison. A fresh start awaits.', 'milestone');
-      stat(s, 'happiness', 10);
-    } else {
-      log(s, `Another year in Ibara Prison, Abeokuta. ${s.prison} year(s) left.`, 'bad');
+    stat(s, 'happiness', -6);
+    stat(s, 'health', -randInt(s, 1, 4));
+    const yrs = Math.ceil(s.jail.daysLeft / DAYS_PER_YEAR);
+    log(s, `Another birthday behind bars at ${PLACE[s.jail.facility].name}. About ${yrs} year(s) left.`, 'bad');
+  }
+
+  function nearestPrison(s) {
+    const here = TOWN[s.town];
+    const prisons = D.PLACES.filter((p) => p.kind === 'prison');
+    prisons.sort((a, b) => distanceKm(here, a) - distanceKm(here, b));
+    return prisons[0].id;
+  }
+
+  // Lock the player up. Sentence is in years; in daily mode it counts down by day.
+  function sendToJail(s, years, why) {
+    const days = Math.max(1, Math.round(years * DAYS_PER_YEAR));
+    s.jail = { daysLeft: days, total: days, facility: nearestPrison(s), behaviour: 50, gang: false, workDays: 0, studyDays: 0 };
+    s.record.push({ year: s.year, crime: why, years });
+    if (s.job) leaveJob(s, 'jailed');
+    if (s.edu.current && s.edu.current.kind === 'tertiary') {
+      s.edu.history.push({ name: s.edu.current.name, qualification: 'Expelled', year: s.year });
+      s.edu.current = null;
+      s.edu.stage = 'out';
     }
+    if (s.politics && s.politics.office) { log(s, 'You were removed from political office.', 'bad'); s.politics.office = null; }
+    s.politics.candidacy = null;
+    s.flags.yahoo = false;
+    s.flags.cultist = false;
+    s.heat = 0;
+    stat(s, 'happiness', -20);
+    log(s, `⛓️ You were sentenced to ${years} year(s) for ${why}, to be served at ${PLACE[s.jail.facility].name}.`, 'bad');
+  }
+
+  function releaseFromJail(s, how) {
+    if (!s.jail) return;
+    const where = PLACE[s.jail.facility].name;
+    s.jail = null;
+    stat(s, 'happiness', 12);
+    log(s, `🔓 ${how || 'You completed your sentence and walked out of'} ${where}. A fresh start awaits.`, 'milestone');
   }
 
   // ---------- education ----------
@@ -296,6 +361,12 @@
 
   function yearEducation(s) {
     const e = s.edu;
+    if (s.daily && e.current) {
+      const rate = (e.daysAttended || 0) / WORKDAYS_PER_YEAR;
+      e.effort = clamp(e.effort + Math.round((rate - 0.6) * 8), 0, 15);
+      if (rate < 0.4) { log(s, `You missed a lot of school this year (${e.daysAttended || 0}/${WORKDAYS_PER_YEAR} days).`, 'bad'); stat(s, 'smarts', -1); }
+      e.daysAttended = 0;
+    }
     if (e.stage === 'none' && s.age === PRIMARY_START_AGE) {
       const name = primarySchoolName(s);
       const fees = s.family.wealth === 'rich' ? 600000 : s.family.wealth === 'comfortable' ? 250000 : 0;
@@ -632,11 +703,19 @@
     let p = j.req.level === 'none' ? 0.85 : 0.35 + (s.stats.smarts - 50) / 150 + (s.stats.looks - 50) / 400 + bestPrestige(s) / 300;
     const best = s.edu.history.filter((h) => h.cgpa).map((h) => h.cgpa).sort((a, b) => b - a)[0];
     if (best >= 4.5) p += 0.15; else if (best && best < 2.4) p -= 0.1;
+    if (s.family.politician && parentsAlive(s)) p += 0.2; // "man know man"
+    if (s.record.length) p -= 0.2; // criminal record
+    if (s.flags.referral) { p += 0.3; s.flags.referral = false; }
     if (!chance(s, clamp(p, 0.1, 0.95))) {
       log(s, `You applied to be a ${j.title} but didn't get the job.`, 'bad');
       stat(s, 'happiness', -3);
       return { ok: false, msg: 'Application unsuccessful.' };
     }
+    return hire(s, jobId);
+  }
+
+  function hire(s, jobId) {
+    const j = JOB[jobId];
     if (s.job) leaveJob(s, 'resigned');
     let employer = j.place ? PLACE[j.place].name : TOWN[s.town].name;
     let town = jobTown(s, j);
@@ -712,8 +791,15 @@
   function yearJob(s) {
     if (!s.job) return;
     const j = JOB[s.job.id];
-    const income = s.job.salary * 12;
-    s.money += income;
+    if (s.daily) {
+      // Pay is earned day by day; attendance drives performance.
+      const rate = (s.job.daysWorked || 0) / WORKDAYS_PER_YEAR;
+      s.job.perf = clamp(s.job.perf + Math.round((rate - 0.75) * 40));
+      if (rate < 0.5) log(s, `Your boss complained about your attendance (${s.job.daysWorked || 0}/${WORKDAYS_PER_YEAR} days).`, 'bad');
+      s.job.daysWorked = 0;
+    } else {
+      s.money += s.job.salary * 12;
+    }
     s.job.years++;
     s.job.perf = clamp(s.job.perf + randInt(s, -10, 8) + Math.round((s.stats.smarts - 50) / 15));
     if (j.risk && chance(s, j.risk * 0.03)) {
@@ -735,8 +821,8 @@
     }
     // Yearly cost-of-living increment
     if (chance(s, 0.4)) s.job.salary = round1k(s.job.salary * 1.05);
-    // Commute
-    if (s.job.town !== s.town) {
+    // Commute (daily mode charges it per working day)
+    if (s.job.town !== s.town && !s.daily) {
       const d = distanceKm(TOWN[s.town], TOWN[s.job.town]);
       const cost = round1k(d * 2 * D.TRANSPORT[hasAssetKind(s, 'car') ? 'car' : 'bus'].perKm * 230);
       s.money -= cost;
@@ -754,8 +840,8 @@
   }
 
   function yearFinance(s) {
-    if (s.prison > 0) return;
-    const cost = livingCost(s);
+    if (s.jail) return;
+    const cost = s.daily ? 0 : livingCost(s);
     if (cost) {
       s.money -= cost;
       log(s, `Rent, food and bills in ${TOWN[s.town].name}: ${naira(cost)}.`, 'money');
@@ -776,7 +862,7 @@
     if (s.flags.cultist && chance(s, 0.12)) {
       arrest(s, 'Police raided a cult meeting and arrested you', randInt(s, 1, 3), false);
     }
-    if (s.livingWithParents && s.age >= 23 && parentsAlive(s)) {
+    if (!s.daily && s.livingWithParents && s.age >= 23 && parentsAlive(s)) {
       const share = 300000;
       s.money -= share;
       log(s, `You contributed ${naira(share)} to household bills at your parents' house.`, 'money');
@@ -790,19 +876,11 @@
   }
 
   function arrest(s, why, years, seize) {
-    s.prison = years;
-    s.record.push({ year: s.year, crime: why });
     if (seize && s.money > 0) s.money = Math.round(s.money * 0.1);
-    if (s.job) leaveJob(s, 'arrested');
-    s.flags.yahoo = false;
-    s.flags.cultist = false;
-    if (s.edu.current && s.edu.current.kind === 'tertiary') {
-      s.edu.history.push({ name: s.edu.current.name, qualification: 'Expelled', year: s.year });
-      s.edu.current = null;
-      s.edu.stage = 'out';
-    }
-    log(s, `🚔 ${why}. You were sentenced to ${years} year(s) in prison.`, 'bad');
-    stat(s, 'happiness', -25);
+    log(s, `🚔 ${why}.`, 'bad');
+    // With the justice module loaded, the arrest goes through police and court.
+    if (EVENTS.arrest) queueEvent(s, 'arrest', { charge: why, years: [years, years + 2], bribe: 500000 * years });
+    else sendToJail(s, years, why);
   }
 
   function yearAssets(s) {
@@ -1080,6 +1158,7 @@
   }
 
   function placeVisitable(p) {
+    if (p.kind === 'prison') return false;
     return ['landmark', 'market', 'worship', 'hospital', 'leisure'].includes(p.kind);
   }
 
@@ -1093,7 +1172,7 @@
     if (!q.ok) return q;
     const total = q.cost + (p.fee || 0);
     if (s.money < total) return { ok: false, msg: `The trip costs ${naira(total)}.` };
-    if (!oncePerYear(s, 'visit-' + placeId)) return { ok: false, msg: `You already visited ${p.name} this year.` };
+    if (s.daily ? !oncePerDay(s, 'visit-' + placeId) : !oncePerYear(s, 'visit-' + placeId)) return { ok: false, msg: `You already visited ${p.name} ${s.daily ? 'today' : 'this year'}.` };
     s.money -= total;
     if (!s.visited.includes(p.town)) s.visited.push(p.town);
     const parts = [`You went to ${p.name} by ${D.TRANSPORT[mode].name.toLowerCase()} (${naira(total)}).`];
@@ -1496,6 +1575,8 @@
       children: s.relations.filter((r) => r.role === 'child').length,
       townsVisited: s.visited.length,
       karma: s.karma,
+      convictions: s.record.length,
+      highestOffice: s.politics && s.politics.best ? s.politics.best : null,
       ending: s.ended,
     };
   }
@@ -1506,12 +1587,42 @@
 
   function deserialize(str) {
     const s = JSON.parse(str);
-    if (!s || s.version !== SAVE_VERSION || !s.stats) throw new Error('Incompatible save file');
+    if (!s || !s.stats || !s.version || s.version > SAVE_VERSION) throw new Error('Incompatible save file');
+    return migrate(s);
+  }
+
+  // Upgrade older saves to the current format.
+  function migrate(s) {
+    if (s.version === 1) {
+      s.record = s.record || [];
+      s.jail = null;
+      if (s.prison > 0) {
+        s.jail = { daysLeft: s.prison * DAYS_PER_YEAR, total: s.prison * DAYS_PER_YEAR, facility: 'ibara-prison', behaviour: 50, gang: false, workDays: 0, studyDays: 0 };
+      }
+      delete s.prison;
+      s.heat = 0;
+      s.crimes = { done: 0, caught: 0 };
+      s.politics = { party: null, office: null, popularity: 0, candidacy: null, terms: 0, rigged: false, embezzled: 0 };
+      s.daily = true;
+      s.clock = { day: 1, dow: 0, min: 8 * 60 };
+      s.needs = { hunger: 80, energy: 90, hygiene: 85, fun: 70, social: 70 };
+      s.dayActs = {};
+      s.auto = true;
+      s.version = 2;
+    }
     return s;
   }
 
+  // ---------- extension points for other modules ----------
+
+  const YEAR_HOOKS = [];
+  function onYear(fn) { YEAR_HOOKS.push(fn); }
+  function registerEvents(defs) { Object.assign(EVENTS, defs); }
+
   return {
-    START_YEAR, WEALTH, ACTIVITIES, SEC_YEARS,
+    START_YEAR, WEALTH, ACTIVITIES, SEC_YEARS, DAYS_PER_YEAR, WORKDAYS_PER_YEAR,
+    onYear, registerEvents, queueEvent, sendToJail, releaseFromJail, arrest, die, log, leaveJob, hasAssetKind, parentsAlive,
+    _h: { rand, randInt, chance, pick, clamp, stat, round1k, spend, oncePerDay, oncePerYear, newPerson, relation },
     TOWN, INST, SEC, PLACE, JOB, SKILL, ASSET,
     naira, distanceKm, lgaName,
     newGame, ageUp, resolveEvent,
@@ -1522,7 +1633,7 @@
     buyAsset, sellAsset, moveOut, moveBackHome, livingCost,
     tripQuote, visitPlace, placeVisitable,
     japa, japaRequirement,
-    netWorth, lifeSummary, canAct, canAfford, parentFeeShare,
+    netWorth, lifeSummary, canAct, hire, canAfford, parentFeeShare,
     serialize, deserialize,
     _rand: rand,
   };
