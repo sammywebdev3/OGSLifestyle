@@ -26,7 +26,10 @@
   let adTimer = null;
   const isH = () => !!(S && S.hustle);
   const LIFE_ONLY_TABS = ['education', 'career', 'politics'];
-  const HUSTLE_ONLY_TABS = ['hustle', 'store'];
+  const HUSTLE_ONLY_TABS = ['hustle', 'store', 'world'];
+  const WO = root.OGS.World;
+  let worldNear = null;
+  let worldSheet = null;
   const clock = { running: false, speed: 1, acc: 0, saveAcc: 0 };
   const ui = {
     edu: { kind: 'all', owner: 'all', q: '' },
@@ -133,6 +136,7 @@
     }
     renderClock();
     renderPanel(tab);
+    if (tab === 'world') renderWorldHud();
     if (mapReady && lastMapTown !== S.town) { M.updatePlayer(S); lastMapTown = S.town; }
     updateOverlays();
   }
@@ -225,6 +229,51 @@
     for (let i = S.log.length - 1; i >= 0 && todays.length < 8; i--) { if (S.log[i].kind === 'year') break; todays.push(S.log[i]); }
     if (todays.length) html += '<h2>Recent</h2>' + todays.map((l) => `<div class="log-item ${l.kind}">${h(l.text)}</div>`).join('');
     return html;
+  }
+
+  // ----- 2D world -----
+
+  const worldHooks = {
+    state: () => S,
+    ads: () => (ST.adsRemoved() ? [] : AB.active()),
+    near: (p) => { worldNear = p; if (!p) worldSheet = null; renderWorldHud(); },
+    enter: () => { if (worldNear && !modalOpen()) { worldSheet = worldNear; renderWorldHud(); } },
+    blocked: () => modalOpen() || !!worldSheet || !!(S && S.events.length),
+  };
+
+  function renderWorldHud() {
+    if (!S) return;
+    const n = S.needs;
+    setHTML($('#world-needs'), meter('🍲', n.hunger) + meter('⚡', n.energy) + meter('🚿', n.hygiene) + meter('🎮', n.fun) + meter('💬', n.social));
+    const prompt = $('#world-prompt');
+    prompt.hidden = !worldNear || !!worldSheet;
+    if (worldNear) prompt.textContent = `🚪 ${worldNear.name}`;
+    const sheet = $('#world-sheet');
+    sheet.hidden = !worldSheet;
+    if (worldSheet) setHTML(sheet, placeSheet(worldSheet));
+  }
+
+  function placeSheet(p) {
+    const acts = L.listActions(S).filter((a) => p.actions.includes(a.id));
+    const order = (a) => p.actions.indexOf(a.id);
+    acts.sort((a, b) => order(a) - order(b));
+    const hu = S.hustle || {};
+    let extra = '';
+    if (p.extra === 'home' && hu.owed) extra = `<p class="req">${hu.lockedOut ? '🔒 You are locked out! ' : ''}You owe ${naira(hu.owed)} rent.</p><button class="small" data-act="arrears">Pay ${naira(hu.owed)}</button>`;
+    if (p.extra === 'houses') extra = `<p class="small">You live in: <b>${h(HU.HOUSES[hu.house].name)}</b>.</p><button class="small" data-tab="assets">See houses & land</button>`;
+    if (p.extra === 'bike') extra = E.hasAssetKind(S, 'motorbike') ? '<p class="small">You ride your own bike. 💪</p>' : `<button class="small secondary" data-act="buy" data-id="motorbike" ${S.money < E.ASSET.motorbike.price ? 'disabled' : ''}>Buy your own bike (${naira(E.ASSET.motorbike.price)})</button>`;
+    if (p.extra === 'owambe') extra = `<p class="small">The next owambe is on <b>Saturday</b>${S.clock.dow === 5 ? ' — that\'s today!' : ''}. ${hu.drip && hu.drip.includes('aso-oke') ? 'Your aso-oke is ready. 🔥' : 'Buy aso-oke in the Hustle tab to look the part.'}</p>`;
+    if (p.extra === 'trace') extra = `<p class="small">${hu.impound ? `🚫 Your bike is impounded for ${hu.impound} more day(s).` : 'You have nothing impounded. Keep it that way!'}</p>`;
+    return `<div class="row between"><h3 style="margin:0">${h(p.name)}</h3><button class="small secondary" data-ui="world-close">✕ Leave</button></div>
+      <p class="small muted">${h(p.blurb)}</p>${acts.length ? `<div class="acts">${actionButtons(acts)}</div>` : ''}${extra}`;
+  }
+
+  function openWorld() {
+    if (!WO) return;
+    if (WO.isMounted()) { WO.resume(); return; }
+    WO.mount($('#world'), $('#joystick'), worldHooks)
+      .then(() => { const l = document.querySelector('.world-loading'); if (l) l.remove(); })
+      .catch(() => { $('#world').innerHTML = '<p class="world-loading">Could not load the 2D engine. Check your internet connection and try again.</p>'; });
   }
 
   // ----- hustle -----
@@ -728,7 +777,7 @@
       lastMapTown = null;
       overlayKey = null;
       closeModal();
-      switchTab('today');
+      switchTab(isH() ? 'world' : 'today');
       afterAction();
       if (mapReady) M.focusMe(S);
       toast(isH() ? 'Pick a hustle, then press ▶ to start the clock.' : 'Press ▶ to start the clock.', 'good');
@@ -780,6 +829,8 @@
     tab = name;
     document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
     document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === 'panel-' + name));
+    if (name !== 'world' && WO && WO.isMounted()) WO.pause();
+    if (name === 'world') { openWorld(); if (S) renderWorldHud(); window.scrollTo({ top: 0 }); return; }
     if (name === 'map') {
       if (!mapReady && root.L) {
         M.init($('#map'), popup);
@@ -863,6 +914,8 @@
       case 'load': $('#load-file').click(); return;
       case 'new': showNewGame(); return;
       case 'close': clearInterval(adTimer); closeModal(); return;
+      case 'world-enter': worldHooks.enter(); return;
+      case 'world-close': worldSheet = null; renderWorldHud(); return;
       case 'random-name': randomName(); return;
     }
   }

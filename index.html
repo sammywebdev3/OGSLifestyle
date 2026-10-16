@@ -27,6 +27,7 @@
   <section class="stats" id="stats"></section>
 
   <nav class="tabs" id="tabs">
+    <button data-tab="world" hidden>🌆 Abeokuta</button>
     <button data-tab="today" class="active">☀️ Today</button>
     <button data-tab="hustle" hidden>🔥 Hustle</button>
     <button data-tab="life">📜 Life</button>
@@ -41,6 +42,16 @@
   </nav>
 
   <main id="main">
+    <section class="panel" id="panel-world">
+      <div class="world-needs" id="world-needs"></div>
+      <div class="world-wrap">
+        <div id="world"><p class="world-loading">Loading Abeokuta…</p></div>
+        <div class="joystick" id="joystick" aria-label="Joystick"><div class="knob"></div></div>
+        <button id="world-prompt" class="world-prompt" data-ui="world-enter" hidden></button>
+        <div id="world-sheet" class="world-sheet" hidden></div>
+      </div>
+      <p class="map-note">Walk with the joystick (or arrow keys / WASD). Stand at a door and tap the button (or press E) to go inside.</p>
+    </section>
     <section class="panel active" id="panel-today"></section>
     <section class="panel" id="panel-hustle"></section>
     <section class="panel" id="panel-store"></section>
@@ -92,6 +103,7 @@
   <script src="js/adboard.js"></script>
   <script src="js/store.js"></script>
   <script src="js/map.js"></script>
+  <script src="js/world.js"></script>
   <script src="js/ui.js"></script>
 </body>
 </html>

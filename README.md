@@ -56,6 +56,25 @@ Each day runs **morning → hustle → evening → lifestyle**.
   - Land in Obafemi-Owode (₦2M), then **build your house** (₦10M).
 - **Transport:** trek, keke, okada, danfo, your own bike or car, or call an Uber/Bolt.
 
+### 🌆 2D Abeokuta (open world)
+
+In Hustle Mode the **Abeokuta** tab is a walkable top-down pixel-art town built with
+[Phaser 3](https://phaser.io), which loads only when you open the tab.
+
+- **Art:** every tile, character, building and vehicle is **drawn in code** (`js/world.js`), so there
+  are no image files and the download stays tiny. It includes yellow danfos, kekes, okadas, palm
+  trees, Olumo Rock, adire stalls, the motor park, a mosque, a church, an owambe hall, the TRACE
+  office and ad billboards.
+- **Controls:** walk with the on-screen joystick (or arrow keys / WASD). Stand at a door and tap the
+  prompt (or press **E**) to use that place. For example, Itoku sells adire, the buka sells food,
+  the okada park rents bikes, the motor park goes to Lagos, Olumo Rock is for content and your room
+  is for sleeping.
+- **Your character:** wears whatever drip you've bought: adire, Anago, corporate or aso-oke.
+- **Life on the streets:** traders, area boys and TRACE officers walk around and talk to you, and
+  traffic honks when you stand in the road. The town darkens at night.
+- **Better art later:** a hired artist can replace the drawing functions with real sprite sheets
+  without touching the game rules.
+
 ### Monetization hooks (not live yet)
 
 - **Ads Board** (`js/adboard.js`): billboards appear on the map, in ad breaks and on the Today
@@ -171,6 +190,7 @@ and the life-sim side moves on: school years, WAEC/JAMB, promotions, ageing and 
 | `js/life.js` | Daily clock, needs, actions, auto-routine, weekly pay/rent, street encounters |
 | `js/society.js` | Crime, police, courts, prison life, connections, parties and elections |
 | `js/hustle.js` | Hustle Mode: 3 hustles, sapa, clout & levels, rent lock-out, TRACE, owambe, zones |
+| `js/world.js` | 2D walkable Abeokuta (Phaser 3), with all pixel art drawn in code |
 | `js/adboard.js`, `js/store.js` | Sponsor billboards and the store (payments adapter hook) |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Installable, offline-capable PWA |
 | `js/map.js` | Leaflet map, live OSM layer and search |

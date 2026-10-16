@@ -147,3 +147,15 @@ test('ads board only shows ads inside their run; store charges nothing without p
   assert.strictEqual(r.ok, false);
   assert.strictEqual(s.money, 50000);
 });
+
+test('2D world: every building action exists and buildings do not overlap', () => {
+  require('../js/world.js');
+  const W = globalThis.OGS.World;
+  const ids = new Set(L.ACTIONS.map((a) => a.id));
+  for (const p of W.PLACES) for (const a of p.actions) assert.ok(ids.has(a), `${p.id} → ${a}`);
+  for (const a of W.PLACES) for (const b of W.PLACES) {
+    if (a === b) continue;
+    const overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    assert.ok(!overlap, `${a.id} overlaps ${b.id}`);
+  }
+});
