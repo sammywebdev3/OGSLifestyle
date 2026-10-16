@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>OGS Lifestyle</title>
+  <meta name="description" content="Ogun State Lifestyle — Eko to the Gateway. From sapa to stardom in the Gateway State, on a real map of Ogun State.">
+  <meta name="theme-color" content="#0b6e4f">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }</script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">OGS</span><span class="brand-sub">Lifestyle</span></div>
+    <div class="who" id="who"></div>
+    <div class="menu">
+      <button class="icon-btn" data-ui="save" title="Export save file">💾</button>
+      <button class="icon-btn" data-ui="load" title="Import save file">📂</button>
+      <button class="icon-btn" data-ui="new" title="Start a new life">✨</button>
+      <input type="file" id="load-file" accept=".json,application/json" hidden>
+    </div>
+  </header>
+
+  <section class="stats" id="stats"></section>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="world" hidden>🌆 Abeokuta</button>
+    <button data-tab="today" class="active">☀️ Today</button>
+    <button data-tab="hustle" hidden>🔥 Hustle</button>
+    <button data-tab="life">📜 Life</button>
+    <button data-tab="map">🗺️ Map</button>
+    <button data-tab="education">🎓 School</button>
+    <button data-tab="career">💼 Career</button>
+    <button data-tab="people">👪 People</button>
+    <button data-tab="street">🦹 Street</button>
+    <button data-tab="politics">🗳️ Politics</button>
+    <button data-tab="assets">🏠 Home & Assets</button>
+    <button data-tab="store" hidden>🛍️ Store</button>
+  </nav>
+
+  <main id="main">
+    <section class="panel" id="panel-world">
+      <div class="world-bar">
+        <div class="world-needs" id="world-needs"></div>
+        <div class="view-seg" role="group" aria-label="View"><button data-ui="view-2d" id="view-2d">2D</button><button data-ui="view-3d" id="view-3d">3D</button></div>
+      </div>
+      <div class="world-wrap">
+        <div id="world"><p class="world-loading">Loading Abeokuta…</p></div>
+        <div id="world3d" hidden><p class="world-loading">Building Abeokuta in 3D…</p></div>
+        <div class="joystick" id="joystick" aria-label="Joystick"><div class="knob"></div></div>
+        <button id="world-prompt" class="world-prompt" data-ui="world-enter" hidden></button>
+        <div id="world-sheet" class="world-sheet" hidden></div>
+      </div>
+      <p class="map-note">Walk with the joystick (or arrow keys / WASD). Stand at a door and tap the button (or press E) to go inside. In 3D, drag the scene to turn the camera.</p>
+    </section>
+    <section class="panel active" id="panel-today"></section>
+    <section class="panel" id="panel-hustle"></section>
+    <section class="panel" id="panel-store"></section>
+    <section class="panel" id="panel-life"></section>
+    <section class="panel" id="panel-map">
+      <div class="map-tools">
+        <form id="map-search" class="map-search" autocomplete="off">
+          <input type="search" id="map-q" placeholder="Search any place in Ogun State…" aria-label="Search places">
+          <button type="submit">Search</button>
+        </form>
+        <button id="live-btn" class="secondary" title="Load every real school, hospital, market and more from OpenStreetMap in the current view">📡 Live OSM places</button>
+        <button id="me-btn" class="secondary">📍 Me</button>
+      </div>
+      <div id="search-results" class="search-results" hidden></div>
+      <div id="map"></div>
+      <p class="map-note" id="map-note">Tap a marker to visit, apply or see jobs. Zoom in and press <b>Live OSM places</b> to load every real school, hospital and market in view.</p>
+    </section>
+    <section class="panel" id="panel-education"></section>
+    <section class="panel" id="panel-career"></section>
+    <section class="panel" id="panel-people"></section>
+    <section class="panel" id="panel-street"></section>
+    <section class="panel" id="panel-politics"></section>
+    <section class="panel" id="panel-assets"></section>
+  </main>
+
+  <footer class="age-bar">
+    <div class="timebar" id="timebar">
+      <button id="play-btn" class="tb-play" title="Play / pause the clock">▶</button>
+      <div class="tb-clock"><b id="tb-time">08:00</b><span id="tb-date"></span></div>
+      <div class="tb-speed" role="group" aria-label="Speed">
+        <button data-speed="1" class="on">1×</button><button data-speed="3">3×</button><button data-speed="10">10×</button>
+      </div>
+      <button id="day-btn" class="tb-btn" title="Live the rest of today on auto-routine">⏭ Day</button>
+      <button id="year-btn" class="tb-btn" title="Live on auto-routine until your next birthday">🎂 Year</button>
+    </div>
+  </footer>
+
+  <div class="modal" id="modal" hidden>
+    <div class="modal-card" id="modal-card" role="dialog" aria-modal="true"></div>
+  </div>
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="js/data.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/life.js"></script>
+  <script src="js/society.js"></script>
+  <script src="js/hustle.js"></script>
+  <script src="js/adboard.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>
