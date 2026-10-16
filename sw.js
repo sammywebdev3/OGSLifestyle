@@ -3,10 +3,10 @@
  * offline and loads fast on slow data. Map tiles and live OSM lookups
  * always come from the network.
  */
-const CACHE = 'ogs-lifestyle-v5';
+const CACHE = 'ogs-lifestyle-v6';
 const SHELL = [
   './', './index.html', './css/style.css', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png',
-  './js/data.js', './js/engine.js', './js/life.js', './js/society.js', './js/hustle.js', './js/adboard.js', './js/store.js', './js/map.js', './js/world.js', './js/world3d.js', './js/ui.js',
+  './js/data.js', './js/engine.js', './js/life.js', './js/society.js', './js/hustle.js', './js/careers.js', './js/adboard.js', './js/store.js', './js/map.js', './js/world.js', './js/world3d.js', './js/ui.js',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/phaser@3.80.1/dist/phaser.min.js',
 ];
 

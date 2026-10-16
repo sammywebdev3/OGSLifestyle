@@ -100,10 +100,8 @@
       s.edu.history.push({ name: 'Covenant University, Ota', qualification: 'BSc Accounting', grade: 'Second Class Upper (3.80)', year: s.year - 1, level: 'BSc', field: 'finance', cgpa: 3.8, instId: 'covenant', courseId: 'accounting' });
       s.nysc = { status: 'done', state: 'Lagos' };
       s.assets.push({ uid: 'a' + s.nextId++, id: 'car-corolla', value: 11000000, boughtYear: s.year });
-      E.hire(s, 'banker');
-      s.job.level = 2; s.job.title = E.JOB.banker.levels[2]; s.job.salary = 650000; s.job.employer = 'Gateway Bank, Kuto';
       s.log = [];
-      E.log(s, `🤑 NEPO BABY! Your uncle "arranged" a ${s.job.title} job at ${s.job.employer}. You have ${naira(s.money)}, a Corolla and a duplex in Ibara GRA.`, 'milestone');
+      E.log(s, `🤑 NEPO BABY! Your uncle "arranged" a Branch Manager job at Gateway Bank. You have ${naira(s.money)}, a Corolla and a duplex in Ibara GRA.`, 'milestone');
       message(s, 'Uncle Wale', 'I have spoken to the MD. Resume Monday. Don\'t disgrace the family name!');
     } else if (start === 'lapo') {
       s.money = 60000;

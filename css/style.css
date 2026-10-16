@@ -396,3 +396,25 @@ body.game.mapview .joystick, body.game.mapview .world-prompt, body.game.mapview 
 .pin-name { display: none; margin-top: 3px; padding: 2px 7px; border-radius: 999px; background: rgba(10, 15, 20, .78); color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .pin-layer.names .pin-name { display: block; }
 .pin:active .pin-ic { transform: scale(.92); }
+
+/* Character creation & careers */
+.cc-steps { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.cc-steps span { font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: var(--line, #e5e7eb); color: var(--muted, #6b7280); }
+.cc-steps span.on { background: #0b6e4f; color: #fff; }
+.cc-steps span.done { background: #cfe9dc; color: #0b6e4f; }
+.cc-avatar { position: relative; width: 96px; height: 120px; margin: 4px auto 10px; }
+.cc-head { position: absolute; left: 30px; top: 0; width: 36px; height: 40px; border-radius: 50%; background: var(--skin); }
+.cc-body { position: absolute; left: 14px; top: 42px; width: 68px; height: 74px; border-radius: 30px 30px 14px 14px; background: var(--top); box-shadow: inset 0 -8px 0 rgba(0, 0, 0, .12); }
+.cc-swatches { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0 10px; }
+.cc-sw { width: 40px; height: 40px; border-radius: 50%; padding: 0; border: 3px solid transparent; box-shadow: 0 0 0 1px rgba(0, 0, 0, .2); }
+.cc-sw.on { border-color: #ffd54a; box-shadow: 0 0 0 2px #0b6e4f; }
+.cc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 8px 0; }
+.cc-grid.one { grid-template-columns: 1fr; }
+.cc-card { display: grid; gap: 3px; text-align: left; padding: 10px 12px; border-radius: 12px; background: var(--card, #fff); color: var(--ink, #111); border: 2px solid var(--line, #e5e7eb); }
+.cc-card small { color: var(--muted, #6b7280); font-size: 12px; font-weight: 500; }
+.cc-card.on { border-color: #0b6e4f; background: #e8f5ee; color: #0b3d2b; }
+.cc-bar { height: 8px; border-radius: 999px; background: rgba(0, 0, 0, .1); overflow: hidden; margin: 6px 0 4px; }
+.cc-bar i { display: block; height: 100%; background: linear-gradient(90deg, #0b6e4f, #2ecc71); border-radius: inherit; }
+.cc-bar.gold i { background: linear-gradient(90deg, #e8a317, #ffd54a); }
+.cc-skill { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0 8px; margin-top: 6px; font-size: 13px; }
+.cc-skill .cc-bar { grid-column: 1 / -1; margin: 2px 0 0; height: 6px; }

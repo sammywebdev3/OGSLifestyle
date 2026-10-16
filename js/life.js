@@ -96,7 +96,7 @@
   // sleep hooks can change what a night's sleep does.
   const GATES = [];
   const AUTO_HOOKS = [];
-  function addAutoHook(fn) { AUTO_HOOKS.push(fn); }
+  function addAutoHook(fn, first) { if (first) AUTO_HOOKS.unshift(fn); else AUTO_HOOKS.push(fn); }
   const SLEEP_HOOKS = [];
   function addGate(fn) { GATES.push(fn); }
   function onSleep(fn) { SLEEP_HOOKS.push(fn); }

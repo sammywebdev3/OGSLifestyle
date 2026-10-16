@@ -10,6 +10,7 @@
   const L = root.OGS.Life;
   const SO = root.OGS.Society;
   const HU = root.OGS.Hustle;
+  const CA = root.OGS.Careers;
   const AB = root.OGS.AdBoard;
   const ST = root.OGS.Store;
   const M = root.OGS.Map;
@@ -407,7 +408,8 @@
     const acts = Object.fromEntries(L.listActions(S).map((a) => [a.id, a]));
     const ok = (id) => acts[id] && !acts[id].why;
     const btns = [];
-    if (ok('work')) btns.push(`<button class="hud-action work" data-act="do" data-id="work">💼 Go to work</button>`);
+    if (ok('shift')) btns.push(`<button class="hud-action work" data-act="do" data-id="shift">💼 Go to work</button>`);
+    else if (ok('work')) btns.push(`<button class="hud-action work" data-act="do" data-id="work">💼 Go to work</button>`);
     const focus = { okada: 'okada-ride', adire: S.hustle.adire > 0 ? 'adire-local' : 'adire-buy', influencer: 'content-skit' }[S.hustle.focus];
     if (focus && ok(focus)) btns.push(`<button class="hud-action" data-act="do" data-id="${focus}">${acts[focus].icon} ${h(acts[focus].name.replace(/\(.*\)/, '').trim())}</button>`);
     else if (!S.hustle.focus && !S.job) btns.push('<button class="hud-action" data-ui="app" data-app="jobs">🔥 Find a hustle</button>');
@@ -454,12 +456,12 @@
   const APP_VIEWS = {
     jobs() {
       const why = HU.canDouble(S);
-      let html = '';
+      let html = careerCard();
       if (S.job) html += `<div class="ph-card"><b>${h(S.job.title)}</b><br><span class="small muted">${h(S.job.employer)} · ${naira(S.job.salary)}/month · ${naira(L.dailyPay(S))} per day you show up</span><div class="acts" style="margin-top:8px">${listActs(['work', 'overtime'])}</div></div>`;
       html += `<h2>🔥 Hustles</h2><div class="acts">${listActs(['adire-buy', 'adire-local', 'adire-lagos', 'okada-ride', 'content-olumo', 'content-skit', 'content-adire', 'hustle'])}</div>
         <div class="ph-row"><button class="small" data-act="watch-ad" ${why ? `disabled title="${h(why)}"` : ''}>📺 Watch ad: double today's hustle</button></div>
         <p class="small muted">Adire today: buy ${naira(HU.adirePrices(S).buy)} · Kuto ${naira(HU.adirePrices(S).local)} · Lagos ${naira(HU.adirePrices(S).lagos)} · stock ${S.hustle.adire}</p>`;
-      return html + renderCareer();
+      return html + careerList();
     },
     bank() {
       const b = HU.bank(S);
@@ -529,7 +531,7 @@
         ${tickets.map(([o, st]) => `<div class="ph-card"><div class="ph-row" style="justify-content:space-between;align-items:center;margin:0"><span><b>${o} odds</b><br><span class="small muted">Stake ${naira(st)} → win ${naira(st * o)}</span></span><button class="small" data-ui="bet" data-odds="${o}" data-stake="${st}" ${S.money < st || S.age < 18 ? 'disabled' : ''}>Place bet</button></div></div>`).join('')}`;
     },
     street() { return renderStreet(); },
-    me() { return renderHustle(); },
+    me() { return skillsCard() + renderHustle(); },
     news() { return renderLife(); },
     store() { return renderStore(); },
     settings() {
@@ -553,6 +555,69 @@
     $('#world-sheet').hidden = false;
     setHTML($('#world-sheet'), `<div class="row between"><h3 style="margin:0">👥 People nearby</h3><button class="small secondary" data-ui="world-close">✕ Close</button></div>
       ${people.length ? people.map((p) => `<div class="prog"><span>${p.female ? '👩🏾' : '👨🏾'} <b>${h(p.name)}</b></span><span class="row"><button class="small" data-ui="befriend" data-name="${h(p.name)}" data-g="${p.female ? 'female' : 'male'}">Gist & befriend</button></span></div>`).join('') : '<p class="muted">Nobody close by. Walk up to someone on the street first.</p>'}`);
+  }
+
+  // Character creation (Hustle Mode): Look → Personality → Dream → Birth lottery.
+  const SKIN_TONES = ['#5a3420', '#6b3e26', '#7c4a2d', '#8d5524'];
+  const TOP_COLORS = ['#c0392b', '#2980b9', '#27ae60', '#f1c40f', '#8e44ad', '#ecf0f1'];
+  function createCharacter(base, village, done) {
+    const pick = { skin: 1, top: TOP_COLORS[0], traits: [], dream: null };
+    const avatar = () => `<div class="cc-avatar" style="--skin:${SKIN_TONES[pick.skin]};--top:${pick.top}"><span class="cc-head"></span><span class="cc-body"></span></div>`;
+    const steps = ['Look', 'Personality', 'Dream', 'Lottery'];
+    const head = (i) => `<div class="cc-steps">${steps.map((t, k) => `<span class="${k === i ? 'on' : k < i ? 'done' : ''}">${k + 1}. ${t}</span>`).join('')}</div>`;
+    const look = () => {
+      openModal(`${head(0)}<h2>👀 Your look</h2>${avatar()}
+        <p class="small muted">Skin tone</p><div class="cc-swatches">${SKIN_TONES.map((c, i) => `<button class="cc-sw ${i === pick.skin ? 'on' : ''}" style="background:${c}" data-k="skin" data-v="${i}" aria-label="Skin tone ${i + 1}"></button>`).join('')}</div>
+        <p class="small muted">Outfit colour</p><div class="cc-swatches">${TOP_COLORS.map((c) => `<button class="cc-sw ${c === pick.top ? 'on' : ''}" style="background:${c}" data-k="top" data-v="${c}" aria-label="Outfit ${c}"></button>`).join('')}</div>
+        <div class="choices"><button id="cc-next">Next: personality →</button></div>`);
+      $('#modal-card').querySelectorAll('.cc-sw').forEach((b) => b.addEventListener('click', () => { if (b.dataset.k === 'skin') pick.skin = +b.dataset.v; else pick.top = b.dataset.v; look(); }));
+      $('#cc-next').addEventListener('click', traits);
+    };
+    const traits = () => {
+      openModal(`${head(1)}<h2>✨ Pick 2 personality traits</h2><p class="small muted">Each one makes a skill grow 50% faster and starts it at level 1.</p>
+        <div class="cc-grid">${Object.entries(CA.TRAITS).map(([k, t]) => `<button class="cc-card ${pick.traits.includes(k) ? 'on' : ''}" data-v="${k}"><b>${t.icon} ${h(t.name)}</b><small>${h(t.desc)}</small></button>`).join('')}</div>
+        <div class="choices"><button id="cc-next" ${pick.traits.length === 2 ? '' : 'disabled'}>${pick.traits.length === 2 ? 'Next: your dream →' : `Choose ${2 - pick.traits.length} more`}</button><button class="secondary" id="cc-back">← Back</button></div>`);
+      $('#modal-card').querySelectorAll('.cc-card').forEach((b) => b.addEventListener('click', () => {
+        const k = b.dataset.v; const i = pick.traits.indexOf(k);
+        if (i >= 0) pick.traits.splice(i, 1); else if (pick.traits.length < 2) pick.traits.push(k); else { pick.traits.shift(); pick.traits.push(k); }
+        traits();
+      }));
+      $('#cc-next').addEventListener('click', () => pick.traits.length === 2 && dream());
+      $('#cc-back').addEventListener('click', look);
+    };
+    const dream = () => {
+      openModal(`${head(2)}<h2>🌠 Your lifetime dream</h2><p class="small muted">The one thing you came to Abeokuta to achieve.</p>
+        <div class="cc-grid one">${Object.entries(CA.DREAMS).map(([k, d]) => `<button class="cc-card ${pick.dream === k ? 'on' : ''}" data-v="${k}"><b>${d.icon} ${h(d.name)}</b><small>${h(d.desc)}</small></button>`).join('')}</div>
+        <div class="choices"><button id="cc-next" ${pick.dream ? '' : 'disabled'}>Spin the birth lottery 🎲</button><button class="secondary" id="cc-back">← Back</button></div>`);
+      $('#modal-card').querySelectorAll('.cc-card').forEach((b) => b.addEventListener('click', () => { pick.dream = b.dataset.v; dream(); }));
+      $('#cc-next').addEventListener('click', () => pick.dream && lottery({ ...base, traits: pick.traits, dream: pick.dream, look: { skin: pick.skin, top: pick.top } }, village, done));
+      $('#cc-back').addEventListener('click', traits);
+    };
+    look();
+  }
+
+  function careerCard() {
+    const c = CA.career(S);
+    if (!c) return '<div class="ph-card"><b>No job yet</b><br><span class="small muted">Pick a career below. Entry level needs no experience — you get paid every shift.</span></div>';
+    const def = CA.CAREERS[c.id]; const need = CA.nextLevelNeeds(S);
+    return `<div class="ph-card"><b>${def.icon} ${h(CA.careerTitle(S))}</b><br><span class="small muted">${h(def.employer)} · ${naira(CA.shiftPay(c))} per shift · ${c.shifts} shift(s) worked</span>
+      <div class="cc-bar"><i style="width:${c.perf}%"></i></div><span class="small">Performance ${Math.round(c.perf)}% — fill it to move up a grade.</span>
+      ${need ? `<p class="small muted">Next level: <b>${h(need.title)}</b> — needs ${CA.SKILLS[need.skill].name} ${need.needSkill}${need.needClout ? ` and clout ${need.needClout}` : ''}${need.missing.length ? ` <span class="req">(missing ${h(need.missing.join(', '))})</span>` : ' ✅'}</p>` : '<p class="small">👑 Top of the career!</p>'}
+      <div class="acts" style="margin-top:6px">${listActs(['shift'])}</div><button class="small secondary" data-ui="resign">Resign</button></div>`;
+  }
+  function careerList() {
+    const cur = CA.career(S);
+    return `<h2>💼 Careers</h2><div class="ph-list">${Object.entries(CA.CAREERS).map(([k, d]) => `<div class="ph-item"><span><b>${d.icon} ${h(d.name)}</b><small>${h(d.levels[0])} at ${h(d.employer)} · ${naira(d.pay[0])}/shift · skill: ${CA.SKILLS[d.skill].name}${d.night ? ' · nights' : d.weekend ? ' · weekends too' : ''}</small></span>${cur && cur.id === k ? '<b class="small">Your job</b>' : `<button class="small" data-ui="apply-career" data-id="${k}">Apply</button>`}</div>`).join('')}</div>`;
+  }
+  function skillsCard() {
+    const hu = S.hustle;
+    const dream = hu.dream && CA.DREAMS[hu.dream];
+    let html = '';
+    if (dream) html += `<div class="ph-card"><b>🌠 Dream: ${dream.icon} ${h(dream.name)}</b>${hu.dreamDone ? ' — <b>achieved! 🏆</b>' : ''}<br><span class="small muted">${h(dream.desc)}</span><div class="cc-bar gold"><i style="width:${Math.round(Math.min(1, dream.progress(S)) * 100)}%"></i></div></div>`;
+    if (hu.traits && hu.traits.length) html += `<p class="small">Personality: ${hu.traits.map((t) => `${CA.TRAITS[t].icon} ${h(CA.TRAITS[t].name)}`).join(' · ')}</p>`;
+    html += `<div class="ph-card"><b>Skills</b>${Object.entries(CA.SKILLS).map(([k, sk]) => `<div class="cc-skill"><span>${sk.icon} ${sk.name}</span><b>${CA.skillLevel(S, k)}</b><div class="cc-bar"><i style="width:${Math.round(CA.skillProgress(S, k) * 100)}%"></i></div></div>`).join('')}
+      <div class="acts" style="margin-top:8px">${listActs(['learn-code', 'practise-music', 'practise-talk', 'gym', 'cook'])}</div></div>`;
+    return html;
   }
 
   // Birth lottery: Nepo, LAPO or Village.
@@ -1041,7 +1106,7 @@
         <div class="seg"><label><input type="radio" name="gender" value="male" checked>👦🏾 Guy</label><label><input type="radio" name="gender" value="female">👧🏾 Babe</label></div>
         <label>First name<input name="first" required maxlength="20" placeholder="e.g. Ayomide"></label>
         <label>Surname<input name="last" required maxlength="20" placeholder="e.g. Odusanya"></label>
-        <div id="hustle-fields"><p class="small muted">🎲 Your start is decided by the birth lottery: NEPO, LAPO or VILLAGE. No choosing — fate decides!</p>
+        <div id="hustle-fields"><p class="small muted">Next you'll design your look, pick 2 personality traits and a lifetime dream — then the birth lottery decides NEPO, LAPO or VILLAGE.</p>
           <label>Your village (where your family lives)<select name="village">${villages.map((x) => `<option value="${x.id}" ${x.id === 'ogbere' ? 'selected' : ''}>${h(x.name)} (${h(E.lgaName(x.lga))})</option>`).join('')}</select></label></div>
         <div id="life-fields" hidden>
           <label>Hometown<select name="town">${towns.map((x) => `<option value="${x.id}" ${x.id === 'abeokuta' ? 'selected' : ''}>${h(x.name)} (${h(E.lgaName(x.lga))})</option>`).join('')}</select></label>
@@ -1082,7 +1147,7 @@
         toast(isH() ? 'Press ▶ to start the clock. Open your 📱 Phone to find work.' : 'Press ▶ to start the clock.', 'good');
       };
       if (fd.get('mode') === 'hustle') {
-        return lottery(base, fd.get('village'), begin);
+        return createCharacter(base, fd.get('village'), begin);
       }
       S = E.newGame({ ...base, town: fd.get('town'), wealth: fd.get('wealth') || undefined });
       lastMapTown = null;
@@ -1269,6 +1334,8 @@
       case 'hud-play': if (S) { if (S.ended || !S.alive) return showNewGame(); clock.running = !clock.running; if (clock.running && S.events.length) showModalForState(); renderGameHud(); renderClock(); } return;
       case 'hud-speed': clock.speed = clock.speed === 1 ? 3 : clock.speed === 3 ? 10 : 1; renderGameHud(); renderClock(); return;
       case 'people': showPeopleNearby(); return;
+      case 'apply-career': return result(CA.apply(S, el.dataset.id));
+      case 'resign': return result(CA.resign(S));
       case 'befriend': { const r = HU.befriend(S, el.dataset.name, el.dataset.g); toast(r.msg, r.ok ? 'good' : 'bad'); save(); render(); return; }
       case 'bank': {
         const amt = +el.dataset.amt; const op = el.dataset.op;

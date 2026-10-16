@@ -28,6 +28,24 @@ Each day runs **morning → hustle → evening → lifestyle**.
 
 Hustle Mode plays full screen in 3D Abeokuta with a game HUD:
 
+- **Create your character:** design your look (skin tone and outfit colour), then pick **2 personality traits**
+  (Techie, Sweet Mouth, Hustler, Gym Rat, Foodie, Musical). Each trait starts its skill at level 1 and makes it
+  grow 50% faster. Next choose a **lifetime dream**:
+  - Chairman: reach the top of a career.
+  - Ibara GRA Landlord: own your house and be worth ₦20m.
+  - Fuji to Afrobeats Star: reach Music 10.
+  - Everybody's Padi: have 6 friends.
+  - Gateway Tech Founder: reach Coding 10 and be worth ₦5m.
+
+  Finally, spin the birth lottery.
+- **Skills:** six skills (Coding, Charisma, Hustle, Fitness, Cooking, Music), each from 0 to 10. They grow from
+  training and from everyday actions such as the gym, cooking, hanging out and hustling.
+- **Careers (📱 Jobs):** 11 careers, including Tech, Banking, Civil Service, Teaching, Health, Adire Trade,
+  Transport, Fitness, Police, Food and Music. Each has 5 levels with 4 grades per level, and you are paid every shift.
+  - Fill performance to 100% to move up a grade.
+  - A new level needs the career's skill at 1, 3, 5 or 7, and clout at the top levels.
+  - Music shifts are at night. Trade, transport, food, fitness and police jobs also work weekends.
+
 - **🗺️ Map view (opens first, like Lagos Life):** a 3D city you look down on, with a round pin on every place.
   - Drag to pan; pinch or scroll to zoom. **🏷️ Names** shows the labels.
   - Tap a pin to see what you can do there, *Walk there* or *Go inside*.

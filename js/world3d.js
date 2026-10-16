@@ -308,7 +308,7 @@ function wires(scene, xs, z) {
 
 // ---------- people ----------
 const SKINS = ['#5a3420', '#6b3e26', '#7c4a2d', '#8d5524'];
-function person({ female = false, skin = SKINS[1], outfit = 'tee', tray = false }) {
+function person({ female = false, skin = SKINS[1], outfit = 'tee', tray = false, top = null }) {
   const g = new THREE.Group();
   const skinM = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.55 });
   const topMat = outfit === 'adire' ? new THREE.MeshStandardMaterial({ map: TX.adire(1), roughness: 0.85 })
@@ -317,7 +317,7 @@ function person({ female = false, skin = SKINS[1], outfit = 'tee', tray = false 
         : outfit === 'corporate' ? new THREE.MeshStandardMaterial({ color: '#1f2638', roughness: 0.6 })
           : outfit === 'trader' ? new THREE.MeshStandardMaterial({ map: TX.ankara(0), roughness: 0.8 })
             : outfit === 'trace' ? new THREE.MeshStandardMaterial({ color: '#c9a66b', roughness: 0.8 })
-              : new THREE.MeshStandardMaterial({ color: ['#c0392b', '#2980b9', '#27ae60', '#ecf0f1'][Math.floor(R() * 4)], roughness: 0.85 });
+              : new THREE.MeshStandardMaterial({ color: top || ['#c0392b', '#2980b9', '#27ae60', '#ecf0f1'][Math.floor(R() * 4)], roughness: 0.85 });
   const botMat = ['asooke', 'adire', 'anago', 'corporate', 'trader'].includes(outfit) ? topMat : new THREE.MeshStandardMaterial({ map: TX.denim(), roughness: 0.9 });
   const shoe = mat('shoe', { color: '#1a1a1a', roughness: 0.5 });
   const legs = [];
@@ -491,7 +491,7 @@ const EXTRA_PLACES = [
   { id: 'hospital', name: 'FMC Idi-Aba', actions: ['doctor'], blurb: 'Federal Medical Centre. See a doctor when your health is dropping.' },
   { id: 'govhouse', name: 'Government House, Oke-Mosan', actions: ['community'], blurb: 'Seat of the Ogun State government. Big men only… for now.' },
   { id: 'school', name: 'Abeokuta Grammar School', actions: ['read'], blurb: "Idi-Aba, founded 1908 — Wole Soyinka's old school. Use the library." },
-  { id: 'bank', name: 'Gateway Bank', actions: ['work'], extra: 'bank', blurb: 'Save, borrow and repay. Bankers resume here every weekday.' },
+  { id: 'bank', name: 'Gateway Bank', actions: ['shift'], extra: 'bank', blurb: 'Save, borrow and repay. Bankers resume here every weekday.' },
   { id: 'mall', name: 'Gateway Mall', actions: ['restaurant', 'hangout'], extra: 'shop', blurb: 'Shops, cinema and a food court. Where Abeokuta big boys and babes hang out.' },
   { id: 'palace', name: "Alake's Palace, Ake", actions: ['community'], blurb: 'Home of the Alake of Egbaland, the paramount ruler of Abeokuta.' },
   { id: 'centenary', name: 'Centenary Hall, Ake', actions: ['hangout'], blurb: 'Built in 1930 to mark 100 years of Abeokuta. Events and tours.' },
@@ -1619,8 +1619,9 @@ function outfitOf(s) {
   return drip.includes('aso-oke') ? 'asooke' : drip.includes('corporate') ? 'corporate' : drip.includes('anago') ? 'anago' : drip.includes('adire-fit') ? 'adire' : 'tee';
 }
 function makePlayer(s) {
-  const p = person({ female: s.gender === 'female', skin: SKINS[s.seed % SKINS.length], outfit: outfitOf(s) });
-  p.userData.outfitKey = s.gender + outfitOf(s);
+  const look = s.look || {};
+  const p = person({ female: s.gender === 'female', skin: SKINS[look.skin != null ? look.skin : s.seed % SKINS.length], outfit: outfitOf(s), top: look.top });
+  p.userData.outfitKey = s.gender + outfitOf(s) + (look.top || '') + (look.skin != null ? look.skin : '');
   return p;
 }
 
@@ -1833,7 +1834,7 @@ function loop(now) {
   const s = hooks.state();
   if (!s) return;
 
-  const ok = s.gender + outfitOf(s);
+  const ok = s.gender + outfitOf(s) + ((s.look && s.look.top) || '') + (s.look && s.look.skin != null ? s.look.skin : '');
   if (player.userData.outfitKey !== ok) { const p2 = makePlayer(s); p2.position.copy(player.position); p2.rotation.copy(player.rotation); const sc = inside ? inside.scene : scene; sc.remove(player); player = p2; sc.add(player); }
 
   const joy = (window.OGS.World && window.OGS.World.joy) || { x: 0, y: 0 };

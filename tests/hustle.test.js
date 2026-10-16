@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 require('../js/society.js');
 const H = require('../js/hustle.js');
+require('../js/careers.js');
 const L = require('../js/life.js');
 const E = require('../js/engine.js');
 const AB = require('../js/adboard.js');
@@ -165,7 +166,7 @@ test('starts: nepo, lapo and village lottery outcomes', () => {
   assert.strictEqual(n.hustle.start, 'nepo');
   assert.strictEqual(n.money, 500000);
   assert.strictEqual(n.hustle.house, 'duplex');
-  assert.ok(n.job && n.job.salary === 650000);
+  assert.ok(!n.job && n.hustle.career && n.hustle.career.id === 'banking' && n.hustle.career.level === 4, 'nepo is a branch manager');
   assert.ok(n.assets.some((a) => a.id === 'car-corolla'));
   const l = H.newHustleGame({ seed: 3, start: 'lapo' });
   assert.strictEqual(l.hustle.bank.loan, 72000);
