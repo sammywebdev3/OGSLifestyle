@@ -39,6 +39,14 @@ Hustle Mode plays full screen in 3D Abeokuta with a game HUD:
   - ChopNow food delivery and GoRide (ride anywhere in town);
   - Houses, Cars, Shop (drip) and SocialGram;
   - Contacts, SureOdds betting, Street (crime), Me, My Story, Store and Settings.
+- **🚪 Walk into buildings:** walk through a door, or tap *Enter*, to go inside. There are 11 cut-away
+  3D interiors: your room, Iya Basira's buka, the game centre, the mosque, the church, the event hall,
+  the GRA duplex, Panseke Lounge, the gym, the house agent and the TRACE office. They have furniture
+  and people inside.
+  - Walk onto a glowing hotspot (🛏️ bed, 🚿 bathroom, 🍳 kitchen, 🍛 counter, 🍻 bar, 🎤 stage...)
+    and tap it to use it.
+  - Walk back out of the door, or tap **🚪 Leave**, to go back outside.
+  - If you owe two weeks' rent, the landlord padlocks your room.
 - **👥 People nearby:** walk up to someone on the street, gist with them and make friends.
 - **🎲 Birth lottery:** there is no picking — every new life automatically spins **NEPO** (₦500k, a Corolla, a bank job and a duplex),
   **LAPO** (a ₦60k microfinance loan to repay every Saturday) or **VILLAGE** (₦50k and a dream).

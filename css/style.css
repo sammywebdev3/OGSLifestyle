@@ -290,6 +290,8 @@ body.game .world-bar, body.game .map-note { display: none; }
 body.game .world-wrap { height: 100dvh; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
 body.game .minimap { top: 74px; right: 10px; }
 body.game .world-prompt { bottom: calc(108px + env(safe-area-inset-bottom)); right: 14px; }
+.world-leave { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); z-index: 21; padding: 10px 18px; border-radius: 999px; font-weight: 800; background: rgba(10, 15, 20, .72); color: #fff; border: 2px solid #ffd54a; box-shadow: 0 6px 18px rgba(0, 0, 0, .35); white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
+body.game .world-leave { bottom: calc(36px + env(safe-area-inset-bottom)); max-width: calc(100vw - 260px); }
 body.game .joystick { bottom: calc(26px + env(safe-area-inset-bottom)); left: 20px; width: 120px; height: 120px; }
 body.game .world-sheet { z-index: 30; right: 96px; bottom: calc(10px + env(safe-area-inset-bottom)); }
 
