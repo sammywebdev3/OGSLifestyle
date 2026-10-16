@@ -28,6 +28,16 @@ Each day runs **morning → hustle → evening → lifestyle**.
 
 Hustle Mode plays full screen in 3D Abeokuta with a game HUD:
 
+- **🗺️ Map view (opens first, like Lagos Life):** a 3D city you look down on, with a round pin on every place.
+  - Drag to pan; pinch or scroll to zoom. **🏷️ Names** shows the labels.
+  - Tap a pin to see what you can do there, *Walk there* or *Go inside*.
+  - **📍 Abeokuta ▾** picks the city. Other Ogun towns are coming soon, and the real Ogun State map is a tap away.
+- **The town:** five roads (Kuto, Olumo, Panseke, Ibara and Oke-Mosan) packed with houses, shops and
+  storey buildings with black water tanks on the roof. Landmarks include MKO Abiola Stadium, FMC Idi-Aba,
+  Government House Oke-Mosan, Abeokuta Grammar School, the Alake's Palace, Centenary Hall, Gateway Bank,
+  Gateway Mall, a police station and a filling station.
+- **Bottom bar:** 🏠 Home · 🛍️ Buy · 🗺️ Map · 🚶 Walk · 📱 Phone.
+
 - **HUD:**
   - your avatar, level and cash;
   - the clock with play/pause and speed;

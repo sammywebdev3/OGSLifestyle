@@ -462,8 +462,9 @@ function rock(radius, seed, texRep = [3, 3]) {
 const ROADS = [
   { id: 'kuto', name: 'Kuto Road', axis: 'x', at: 0, from: -95, to: 95 },
   { id: 'olumo', name: 'Olumo Road', axis: 'x', at: -60, from: -95, to: 95 },
-  { id: 'panseke', name: 'Panseke Road', axis: 'z', at: -30, from: -95, to: 32 },
-  { id: 'ibara', name: 'Ibara Road', axis: 'z', at: 40, from: -95, to: 32 },
+  { id: 'okemosan', name: 'Oke-Mosan Road', axis: 'x', at: 60, from: -95, to: 95 },
+  { id: 'panseke', name: 'Panseke Road', axis: 'z', at: -30, from: -95, to: 95 },
+  { id: 'ibara', name: 'Ibara Road', axis: 'z', at: 40, from: -95, to: 95 },
 ];
 const CROSS = 8; // half-size of an intersection
 const FRONT = 8.4; // distance from road centre to a property's front line
@@ -474,7 +475,33 @@ const LAYOUT = [
   ['itoku', 'kuto', 1, -66], ['kuto', 'kuto', 1, 3], ['motor-park', 'kuto', 1, 66],
   ['olumo', 'olumo', -1, -66], ['church', 'olumo', -1, 1], ['hall', 'olumo', -1, 18], ['duplex', 'olumo', -1, 70],
   ['okada-park', 'olumo', 1, -68], ['trace', 'olumo', 1, -52], ['panseke', 'olumo', 1, -4], ['gym', 'olumo', 1, 12], ['agent', 'olumo', 1, 64],
+  // the southern district: Oke-Mosan, Ake and Ibara
+  ['school', 'okemosan', -1, -70], ['hospital', 'okemosan', -1, 8], ['bank', 'okemosan', -1, 70],
+  ['govhouse', 'okemosan', 1, -68], ['stadium', 'okemosan', 1, 2], ['mall', 'okemosan', 1, 68],
+  ['palace', 'panseke', -1, 34], ['centenary', 'panseke', 1, 32], ['filling', 'ibara', -1, 30], ['police', 'ibara', 1, 32],
+  ['billboard', 'ibara', 1, -30], ['billboard', 'panseke', 1, -30],
 ];
+// Footprint (width along the road, depth) that ordinary houses must keep clear of.
+const FOOT = { home: [18, 13], buka: [10, 9], game: [13, 10], mosque: [12, 13], billboard: [12, 5], itoku: [22, 13], kuto: [22, 13], 'motor-park': [22, 15],
+  olumo: [12, 14], church: [10, 14], hall: [16, 11], duplex: [19, 17], 'okada-park': [14, 11], trace: [10, 9], panseke: [13, 10], gym: [9, 9], agent: [9, 9],
+  school: [19, 9], hospital: [17, 11], bank: [11, 9], govhouse: [25, 19], stadium: [33, 25], mall: [21, 14], palace: [21, 16], centenary: [13, 10], filling: [14, 12], police: [11, 10] };
+// Places that only exist in 3D (the 2D town keeps its own list).
+const EXTRA_PLACES = [
+  { id: 'stadium', name: 'MKO Abiola Stadium', actions: ['street-ball', 'gym'], blurb: "Kuto's big stadium. Play football with the boys or run laps on the track." },
+  { id: 'hospital', name: 'FMC Idi-Aba', actions: ['doctor'], blurb: 'Federal Medical Centre. See a doctor when your health is dropping.' },
+  { id: 'govhouse', name: 'Government House, Oke-Mosan', actions: ['community'], blurb: 'Seat of the Ogun State government. Big men only… for now.' },
+  { id: 'school', name: 'Abeokuta Grammar School', actions: ['read'], blurb: "Idi-Aba, founded 1908 — Wole Soyinka's old school. Use the library." },
+  { id: 'bank', name: 'Gateway Bank', actions: ['work'], extra: 'bank', blurb: 'Save, borrow and repay. Bankers resume here every weekday.' },
+  { id: 'mall', name: 'Gateway Mall', actions: ['restaurant', 'hangout'], extra: 'shop', blurb: 'Shops, cinema and a food court. Where Abeokuta big boys and babes hang out.' },
+  { id: 'palace', name: "Alake's Palace, Ake", actions: ['community'], blurb: 'Home of the Alake of Egbaland, the paramount ruler of Abeokuta.' },
+  { id: 'centenary', name: 'Centenary Hall, Ake', actions: ['hangout'], blurb: 'Built in 1930 to mark 100 years of Abeokuta. Events and tours.' },
+  { id: 'filling', name: 'Gateway Oil Filling Station', actions: [], blurb: 'Fuel for your bike and car. When there is queue, there is queue.' },
+  { id: 'police', name: 'Police Station, Ibara', actions: [], blurb: 'Report a crime or bail a friend. Stay out of trouble!' },
+];
+const PIN_ICON = { home: '🏠', buka: '🍲', game: '🎮', mosque: '🕌', itoku: '🧵', kuto: '🛒', 'motor-park': '🚌', olumo: '⛰️', church: '⛪', hall: '💃', duplex: '🏡',
+  'okada-park': '🏍️', trace: '🚦', panseke: '🍻', gym: '🏋️', agent: '🔑', stadium: '🏟️', hospital: '🏥', govhouse: '🏛️', school: '🎓', bank: '🏦', mall: '🛍️',
+  palace: '👑', centenary: '🏰', filling: '⛽', police: '👮' };
+export function placeDef(id) { return window.OGS.World.PLACES.find((p) => p.id === id) || EXTRA_PLACES.find((p) => p.id === id) || null; }
 const PLACES3D = [];
 
 function roadOf(id) { return ROADS.find((r) => r.id === id); }
@@ -666,7 +693,7 @@ function buildPlace(id, f) {
     case 'agent': return BUILD.shop(f, { w: 8, d: 7, color: '#f5deb3', sign: ['KUTO LANDS & PROPERTIES', 'TO LET • FOR SALE'], signColor: ['#fff', '#8e5a2b'] });
     case 'trace': return BUILD.shop(f, { w: 9, d: 7, color: '#f4f4f0', sign: ['TRACE OFFICE', 'TRAFFIC COMPLIANCE'], signColor: ['#ff7a00', '#fff'],
       extra: (g) => { for (let i = 0; i < 3; i++) { const b = okada(); b.children.filter((c) => c.userData && c.userData.legs).forEach((c) => b.remove(c)); b.position.set(-3 + i * 2.2, 0, -0.1); b.rotation.y = 0.15; g.add(b); } } });
-    default: return BUILD[id](f);
+    default: return (BUILD[id] || LANDMARK[id])(f);
   }
 }
 
@@ -701,7 +728,7 @@ function buildTown(root) {
     water: new THREE.MeshStandardMaterial({ color: '#2a3a33', roughness: 0.15, metalness: 0.2 }),
   };
   root.add(plane(600, 600, new THREE.MeshStandardMaterial({ map: TX.grass([80, 80]), roughness: 1 }), 0, -0.02, -40));
-  root.add(plane(200, 135, new THREE.MeshStandardMaterial({ map: TX.laterite([26, 18]), roughness: 1 }), 0, 0.0, -32));
+  root.add(plane(200, 196, new THREE.MeshStandardMaterial({ map: TX.laterite([26, 26]), roughness: 1 }), 0, 0.0, -2));
 
   // Roads: split each road around intersections
   const xs = ROADS.filter((r) => r.axis === 'z').map((r) => r.at);
@@ -722,6 +749,7 @@ function buildTown(root) {
     const f = frontage(road, side, along);
     const g = buildPlace(id, f);
     g.position.set(f.x, 0, f.z); g.rotation.y = f.rot;
+    if (FOOT[id]) reserved.push(rectOf(f, FOOT[id][0], FOOT[id][1]));
     root.add(g);
     // slab over the gutter + a hole in its collider
     const slab = box(3, 0.12, 1.1, mats.conc, 0, 0.22, 0);
@@ -730,20 +758,22 @@ function buildTown(root) {
     colliders.push({ hole: true, minX: sp.x - 1.6, maxX: sp.x + 1.6, minZ: sp.z - 1.6, maxZ: sp.z + 1.6 });
     if (id !== 'billboard') {
       const door = road.axis === 'x' ? { x: along, z: road.at + side * 9.3 } : { x: road.at + side * 9.3, z: along };
-      PLACES3D.push({ id, x: door.x, z: door.z, road: road.name });
+      const mid = road.axis === 'x' ? { x: along, z: road.at + side * (FRONT + (FOOT[id] ? FOOT[id][1] / 2 : 6)) } : { x: road.at + side * (FRONT + (FOOT[id] ? FOOT[id][1] / 2 : 6)), z: along };
+      PLACES3D.push({ id, x: door.x, z: door.z, cx: mid.x, cz: mid.z, road: road.name });
     }
   }
 
   // Palms, poles & wires along the roads
   const palmSpots = [[-86, -9.5], [-44, -9.5], [-16, -9.5], [26, 9.5], [52, -9.5], [-80, 9.5], [-50, 9.5], [-22, 9.5], [18, 9.5], [52, 9.5], [86, 9.5],
     [-86, -69.5], [-40, -69.5], [30, -69.5], [56, -69.5], [-80, -50.5], [-40, -50.5], [30, -50.5], [50, -50.5],
-    [-39.5, -30], [-20.5, -40], [-39.5, 20], [30.5, -25], [49.5, -35], [49.5, 18], [-20.5, 22], [30.5, 24]];
+    [-39.5, -30], [-20.5, -40], [-39.5, 20], [30.5, -25], [49.5, -35], [49.5, 18], [-20.5, 22]];
   for (const [x, z] of palmSpots) root.add(palm(x, z, rr(0.85, 1.15)));
   for (const road of ROADS.filter((r) => r.axis === 'x')) {
     const px = []; for (let x = -90; x <= 90; x += 20) if (!xs.some((c) => Math.abs(c - x) < CROSS + 1)) px.push(x);
     for (const x of px) pole(x, road.at - 4.9, root);
     wires(root, px, road.at - 4.9);
   }
+  fillTown(root);
 
   // Olumo Rock rising behind the north of town, plus far hills
   const olumo = new THREE.Group();
@@ -791,6 +821,246 @@ function hideBlockingPoles() {
     const t = (px * dx + pz * dz) / len2;
     const cx = px - t * dx; const cz = pz - t * dz;
     p.visible = !(t > -0.1 && t < 1.15 && cx * cx + cz * cz < 1.6 * 1.6);
+  }
+}
+
+// ----- Oke-Mosan, Ake & Ibara landmarks (front at z = 0, extending into -z) -----
+function ngFlag(g, x, y, z) {
+  const tex = canvasTex('ngflag', 96, 48, (c) => { c.fillStyle = '#008751'; c.fillRect(0, 0, 32, 48); c.fillStyle = '#fff'; c.fillRect(32, 0, 32, 48); c.fillStyle = '#008751'; c.fillRect(64, 0, 32, 48); });
+  g.add(box(0.1, 7, 0.1, mat('steel', { color: '#5d6166', metalness: 0.8, roughness: 0.4 }), x, 3.5, z));
+  const fl = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8), M.ngflag || (M.ngflag = new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: 0.8 })));
+  fl.position.set(x + 0.8, 6.5, z); g.add(fl);
+}
+// Walls of a compound (inner group at local z = cz) as colliders, matching compoundWall().
+function compoundColliders(f, w, d, cz, gateW) {
+  collideLocal(f, 0, cz - d / 2, w, 0.4); collideLocal(f, -w / 2, cz, 0.4, d); collideLocal(f, w / 2, cz, 0.4, d);
+  const side = (w - gateW) / 2;
+  collideLocal(f, -w / 2 + side / 2, cz + d / 2, side, 0.4); collideLocal(f, w / 2 - side / 2, cz + d / 2, side, 0.4);
+}
+const LANDMARK = {
+  stadium(f) {
+    const g = new THREE.Group(); const cz = -13;
+    const pitchTex = canvasTex('pitch', 256, 160, (c, w, h) => {
+      for (let i = 0; i < 10; i++) { c.fillStyle = i % 2 ? '#2f8a3a' : '#38994a'; c.fillRect(i * w / 10, 0, w / 10, h); }
+      c.strokeStyle = 'rgba(255,255,255,.9)'; c.lineWidth = 3; c.strokeRect(6, 6, w - 12, h - 12);
+      c.beginPath(); c.moveTo(w / 2, 6); c.lineTo(w / 2, h - 6); c.stroke(); c.beginPath(); c.arc(w / 2, h / 2, 22, 0, Math.PI * 2); c.stroke();
+      c.strokeRect(6, h / 2 - 34, 34, 68); c.strokeRect(w - 40, h / 2 - 34, 34, 68);
+    });
+    g.add(plane(24, 17, mat('track', { color: '#a5442f', roughness: 0.9 }), 0, 0.02, cz));
+    g.add(plane(18, 11, mat('pitch', { map: pitchTex, roughness: 0.9 }), 0, 0.03, cz));
+    const seat = [mat('seatG', { color: '#1e7d43', roughness: 0.7 }), mat('seatW', { color: '#e9ecef', roughness: 0.7 })];
+    for (let t = 0; t < 3; t++) {
+      const hgt = 0.9 + t * 0.9; const m = seat[t % 2];
+      g.add(box(26 + t * 2.8, hgt, 1.4, m, 0, hgt / 2, cz - 9.2 - t * 1.4));
+      for (const sx of [-1, 1]) g.add(box(1.4, hgt, 17, m, sx * (12.7 + t * 1.4), hgt / 2, cz));
+    }
+    g.add(box(30, 0.15, 5, mat('standroof', { color: '#dfe4e8', metalness: 0.4, roughness: 0.4 }), 0, 4.4, cz - 11.2));
+    for (const [x, z] of [[-15, cz - 11], [15, cz - 11], [-15, cz + 8], [15, cz + 8]]) {
+      g.add(box(0.3, 12, 0.3, mat('steel'), x, 6, z));
+      g.add(box(2, 1, 0.3, mat('flood', { color: '#fffbe0', emissive: '#fff2b0', emissiveIntensity: 0.4 }), x, 12, z));
+    }
+    g.add(signBoard(['MKO ABIOLA STADIUM', 'KUTO • ABEOKUTA'], '#1e7d43', '#ffffff', 8, 1.4, 3.2, -0.6, true));
+    collideLocal(f, 0, cz, 32, 22);
+    return g;
+  },
+  hospital(f) {
+    const g = new THREE.Group();
+    const b = building({ w: 16, d: 9, h: 6.6, storeys: 2, roof: 'flat', color: '#f4f8fb', windows: 4, sign: ['FEDERAL MEDICAL CENTRE', 'IDI-ABA • ABEOKUTA'], signColor: ['#ffffff', '#c0392b'] });
+    b.position.z = -5.6; g.add(b);
+    const red = mat('redcross', { color: '#d62828', emissive: '#5a0000', roughness: 0.5 });
+    g.add(box(2.4, 0.7, 0.2, red, 5.5, 5.8, -1.0)); g.add(box(0.7, 2.4, 0.2, red, 5.5, 5.8, -1.0));
+    const amb = new THREE.Mesh(new RoundedBoxGeometry(4.2, 2, 1.9, 3, 0.3), mat('ambulance', { color: '#f7f7f7', metalness: 0.3, roughness: 0.35 })); amb.position.set(-5, 1.1, 1.6); amb.castShadow = true; g.add(amb);
+    g.add(box(4.25, 0.25, 1.95, red, -5, 1.0, 1.6));
+    collideLocal(f, 0, -5.6, 16, 9); collideLocal(f, -5, 1.6, 4.2, 1.9);
+    return g;
+  },
+  govhouse(f) {
+    const g = new THREE.Group(); const inner = new THREE.Group();
+    compoundWall(inner, 24, 18, '#f0efe9', 5);
+    const b = building({ w: 16, d: 8, h: 7, storeys: 2, roof: 'flat', color: '#fbfaf5', windows: 4, sign: ['GOVERNMENT HOUSE', 'OKE-MOSAN • OGUN STATE'], signColor: ['#ffffff', '#1e7d43'] });
+    b.position.set(0, 0, -3); inner.add(b);
+    const col = mat('column', { color: '#ffffff', roughness: 0.5 });
+    for (let i = 0; i < 6; i++) inner.add(box(0.4, 6.8, 0.4, col, -5 + i * 2, 3.4, 1.6));
+    inner.add(box(12, 0.3, 2.2, col, 0, 6.9, 1.2));
+    ngFlag(inner, -6, 0, 6); ngFlag(inner, 6, 0, 6);
+    inner.position.z = -9.2; g.add(inner);
+    compoundColliders(f, 24, 18, -9.2, 5); collideLocal(f, 0, -12.2, 16, 8); collideLocal(f, 0, -7.4, 12, 1.4);
+    return g;
+  },
+  school(f) {
+    const g = new THREE.Group();
+    const b = building({ w: 18, d: 7, h: 3.4, color: '#f3e3b3', windows: 5, sign: ['ABEOKUTA GRAMMAR SCHOOL', 'IDI-ABA • EST. 1908'], signColor: ['#1a3c7a', '#ffffff'] });
+    b.position.z = -4.2; g.add(b);
+    ngFlag(g, -7.5, 0, 1.2);
+    collideLocal(f, 0, -4.2, 18, 7);
+    return g;
+  },
+  bank(f) {
+    const g = BUILD.shop(f, { w: 10, d: 8, h: 4.2, roof: 'flat', color: '#e8eef5', sign: ['GATEWAY BANK', 'ATM • 24/7'], signColor: ['#0b3d91', '#ffffff'] });
+    g.add(box(0.9, 1.8, 0.6, mat('atm', { color: '#0b3d91', metalness: 0.4, roughness: 0.4 }), 3.6, 0.9, 0.2)); g.add(box(0.5, 0.35, 0.02, mat('in-screen', { color: '#0b1a2a', emissive: '#4f8fd6', emissiveIntensity: 0.9 }), 3.6, 1.3, 0.52, { cast: false }));
+    return g;
+  },
+  mall(f) {
+    const g = new THREE.Group();
+    const b = building({ w: 20, d: 11, h: 7, roof: 'flat', color: '#dfe6ec', windows: 5, sign: ['GATEWAY MALL', 'SHOPS • CINEMA • FOOD COURT'], signColor: ['#c0392b', '#ffffff'] });
+    b.position.z = -9.5; g.add(b);
+    const line = mat('parkline', { color: '#f2f2f2', roughness: 0.8 });
+    for (let i = 0; i < 6; i++) g.add(box(0.12, 0.02, 3, line, -8 + i * 3.2, 0.03, -1.8, { cast: false }));
+    for (const [x, c] of [[-6.4, '#c0392b'], [0, '#ecf0f1'], [3.2, '#2c3e50']]) { const car = new THREE.Mesh(new RoundedBoxGeometry(1.8, 1.2, 3.8, 3, 0.3), mat('pcar' + c, { color: c, metalness: 0.7, roughness: 0.3 })); car.position.set(x, 0.75, -1.8); car.castShadow = true; g.add(car); collideLocal(f, x, -1.8, 1.8, 3.8); }
+    collideLocal(f, 0, -9.5, 20, 11);
+    return g;
+  },
+  palace(f) {
+    const g = new THREE.Group(); const inner = new THREE.Group();
+    compoundWall(inner, 20, 15, '#e9d3a6', 4);
+    const b = building({ w: 13, d: 8, h: 5, color: '#f2e2c4', windows: 3, sign: ["ALAKE'S PALACE", 'AKE • EGBALAND'], signColor: ['#7b1f1f', '#f5d76e'] });
+    b.position.set(0, 0, -2.5); inner.add(b);
+    const gold = mat('gold', { color: '#d4a90b', metalness: 1, roughness: 0.25 });
+    for (const x of [-3, 3]) { inner.add(box(0.8, 1.2, 0.8, mat('plinth', { color: '#efe6d2', roughness: 0.6 }), x, 0.6, 3.5)); const crown = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.9, 8), gold); crown.position.set(x, 1.65, 3.5); inner.add(crown); }
+    inner.position.z = -7.7; g.add(inner);
+    compoundColliders(f, 20, 15, -7.7, 4); collideLocal(f, 0, -10.2, 13, 8);
+    for (const x of [-3, 3]) collideLocal(f, x, -4.2, 0.8, 0.8);
+    return g;
+  },
+  centenary(f) {
+    const g = new THREE.Group();
+    const b = building({ w: 12, d: 9, h: 6, storeys: 2, color: '#d9c2a0', windows: 3, sign: ['CENTENARY HALL', 'AKE • 1930'], signColor: ['#5b3a1a', '#f5e6c8'] });
+    b.position.z = -5.1; g.add(b);
+    const wallM = new THREE.MeshStandardMaterial({ map: TX.plaster('#d9c2a0', [1, 3]), roughness: 0.9 });
+    g.add(box(2.6, 11, 2.6, wallM, 4.2, 5.5, -1.6));
+    const face = new THREE.Mesh(new THREE.CircleGeometry(0.9, 24), mat('clock', { color: '#fdfdf5', roughness: 0.5 })); face.position.set(4.2, 9.2, -0.28); g.add(face);
+    g.add(box(0.08, 0.7, 0.03, FM.dark(), 4.2, 9.45, -0.24)); g.add(box(0.5, 0.08, 0.03, FM.dark(), 4.4, 9.2, -0.24));
+    collideLocal(f, 0, -5.1, 12, 9); collideLocal(f, 4.2, -1.6, 2.6, 2.6);
+    return g;
+  },
+  police(f) {
+    const g = BUILD.shop(f, { w: 10, d: 8, h: 3.8, color: '#dfe8f5', sign: ['NIGERIA POLICE', 'IBARA DIVISION'], signColor: ['#0d2c6b', '#ffffff'] });
+    const van = new THREE.Mesh(new RoundedBoxGeometry(1.9, 1.7, 4.2, 3, 0.3), mat('policevan', { color: '#1c2f5e', metalness: 0.5, roughness: 0.35 })); van.position.set(3.8, 1.0, 2.0); van.castShadow = true; g.add(van);
+    collideLocal(f, 3.8, 2.0, 1.9, 4.2);
+    return g;
+  },
+  filling(f) {
+    const g = new THREE.Group(); const steel = mat('steel', { color: '#5d6166', metalness: 0.8, roughness: 0.4 });
+    g.add(box(13, 0.5, 7, mat('canopy-o', { color: '#f4f4f4', roughness: 0.5 }), 0, 5, -4.5));
+    g.add(box(13.05, 0.25, 7.05, mat('canopy-r', { color: '#c0392b', roughness: 0.5 }), 0, 4.75, -4.5));
+    for (const x of [-5.5, 5.5]) for (const z of [-2, -7]) { g.add(box(0.3, 5, 0.3, steel, x, 2.5, z)); collideLocal(f, x, z, 0.3, 0.3); }
+    for (const x of [-2.5, 2.5]) { g.add(box(0.9, 1.6, 0.6, mat('pump', { color: '#c0392b', roughness: 0.5 }), x, 0.8, -4.5)); collideLocal(f, x, -4.5, 0.9, 0.6); }
+    const shop = building({ w: 8, d: 4, h: 3.2, roof: 'flat', color: '#f6f1e6', windows: 1, sign: ['GATEWAY OIL', 'PMS • DIESEL • GAS'], signColor: ['#c0392b', '#ffffff'] });
+    shop.position.z = -10; g.add(shop); collideLocal(f, 0, -10, 8, 4);
+    return g;
+  },
+};
+
+// ----- filler: the ordinary houses, shops and storey buildings that make the town dense -----
+const FILL_WALLS = ['#e8dcc2', '#f3e9d2', '#d9cbb0', '#cfe0d6', '#e7d3c2', '#f2efe8', '#dfd6c8', '#e9e0cf'];
+const SHOP_SIGNS = [['MAMA T PROVISIONS'], ["GOD'S TIME SALON"], ['BLESSED POS & TRANSFER'], ['JESUS CHILD PHARMACY'], ['ALHAJA FABRICS'], ['OGUN BOYS AUTO PARTS'], ['ARIYO PHONES & ACCESSORIES'], ['EXCELLENCE BARBING SALON'], ['IYA OJO PURE WATER'], ['DIVINE FAVOUR STORES']];
+function fillWall(i) { const c = FILL_WALLS[i % FILL_WALLS.length]; return M['fw' + c] || (M['fw' + c] = new THREE.MeshStandardMaterial({ map: TX.plaster(c, [2, 1]), roughness: 0.92 })); }
+function fillZinc(i) { const k = 'fz' + (i % 2); return M[k] || (M[k] = new THREE.MeshStandardMaterial({ map: TX.zinc([3, 2]), color: i % 2 ? '#ffffff' : '#c9b8a6', metalness: 0.5, roughness: 0.6, side: THREE.DoubleSide })); }
+function fillWindow(g, x, y, z) {
+  const glass = M.winglass || (M.winglass = new THREE.MeshStandardMaterial({ color: '#1d2a33', roughness: 0.08, metalness: 0.6, emissive: '#ffb860', emissiveIntensity: 0 }));
+  if (!nightGlow.includes(glass)) nightGlow.push(glass);
+  g.add(box(1.25, 1.2, 0.05, mat('frame', { color: '#e8e2d4', roughness: 0.7 }), x, y, z + 0.01, { cast: false }));
+  g.add(box(1.05, 1.0, 0.05, glass, x, y, z + 0.04, { cast: false }));
+}
+function fillerBuilding(kind, w, d, ci) {
+  const g = new THREE.Group(); const wall = fillWall(ci);
+  const cz = -d / 2;
+  if (kind === 'storey') {
+    const floors = 2 + (ci % 2); const h = floors * 3;
+    g.add(box(w, h, d, wall, 0, h / 2, cz));
+    g.add(box(w + 0.3, 0.25, d + 0.3, mat('slab', { map: TX.concrete([2, 1]), roughness: 0.95 }), 0, h + 0.12, cz));
+    g.add(box(w + 0.3, 0.6, 0.15, wall, 0, h + 0.5, 0.1)); // parapet
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 1.5, 14), mat('tank', { color: '#1c1c1c', roughness: 0.6 })); tank.position.set(w / 2 - 1.3, h + 1.0, cz - d / 4); tank.castShadow = true; g.add(tank);
+    for (let fl = 0; fl < floors; fl++) for (let i = 0; i < 3; i++) fillWindow(g, -w / 2 + w * (i + 0.5) / 3, fl * 3 + 1.7, 0);
+    g.add(box(w * 0.6, 0.18, 1.2, mat('slab', {}), 0, 3.05, 0.6)); // balcony
+    g.add(box(1.1, 2.1, 0.08, mat('door', { map: TX.wood(), roughness: 0.6 }), w / 2 - 1.2, 1.05, 0.04));
+  } else if (kind === 'shop') {
+    const h = 3.6;
+    g.add(box(w, h, d, wall, 0, h / 2, cz));
+    const roof = box(w + 0.6, 0.06, d + 0.8, fillZinc(ci), 0, h + 0.3, cz); roof.rotation.x = -0.08; g.add(roof);
+    const aw = ['#c0392b', '#1e7d43', '#2471a3', '#d68910'][ci % 4];
+    const awn = box(w + 0.2, 0.06, 1.6, mat('awning' + aw, { color: aw, roughness: 0.7, side: THREE.DoubleSide }), 0, 2.8, 0.75); awn.rotation.x = 0.25; g.add(awn);
+    const n = Math.max(2, Math.floor(w / 3.5));
+    for (let i = 0; i < n; i++) g.add(box(w / n - 0.5, 2.4, 0.06, mat('roller', { color: '#9aa0a6', metalness: 0.6, roughness: 0.5 }), -w / 2 + (w / n) * (i + 0.5), 1.2, 0.04));
+    const sign = SHOP_SIGNS[ci % SHOP_SIGNS.length];
+    g.add(box(Math.min(w - 0.6, 6), 0.9, 0.08, M['shopsign' + ci % SHOP_SIGNS.length] || (M['shopsign' + ci % SHOP_SIGNS.length] = new THREE.MeshStandardMaterial({ map: TX.sign(sign, '#fdfdf8', aw), roughness: 0.7 })), 0, 3.25, 0.1));
+  } else { // bungalow with a zinc gable roof (and sometimes a low compound wall)
+    const h = 3.1;
+    g.add(box(w, h, d, wall, 0, h / 2, cz));
+    const pitch = 0.42; const half = d / 2 + 0.45; const slope = half / Math.cos(pitch);
+    for (const s of [-1, 1]) { const r = box(w + 0.7, 0.05, slope, fillZinc(ci), 0, h + Math.tan(pitch) * half / 2 + 0.02, cz + s * half / 2); r.rotation.x = s * pitch; g.add(r); }
+    const shape = new THREE.Shape(); shape.moveTo(-d / 2, 0); shape.lineTo(d / 2, 0); shape.lineTo(0, Math.tan(pitch) * d / 2); shape.lineTo(-d / 2, 0);
+    for (const s of [-1, 1]) { const tri = new THREE.Mesh(new THREE.ShapeGeometry(shape), wall); tri.rotation.y = Math.PI / 2; tri.position.set(s * w / 2, h, cz); g.add(tri); }
+    fillWindow(g, -w / 4 - 0.3, 1.6, 0); fillWindow(g, w / 4 + 0.3, 1.6, 0);
+    g.add(box(1.1, 2.1, 0.08, mat('door', { map: TX.wood(), roughness: 0.6 }), 0, 1.05, 0.04));
+  }
+  return g;
+}
+function fillerTree(x, z, s) {
+  const g = new THREE.Group();
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18 * s, 0.26 * s, 2.4 * s, 7), mat('bark', { map: TX.bark(), roughness: 0.95 })); trunk.position.y = 1.2 * s; trunk.castShadow = true; g.add(trunk);
+  for (let i = 0; i < 3; i++) { const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5 * s, 0), mat('canopy', { color: '#2f6b1f', roughness: 0.9, flatShading: true })); leaf.position.set(rr(-0.7, 0.7) * s, (3 + rr(-0.3, 0.6)) * s, rr(-0.7, 0.7) * s); leaf.castShadow = true; g.add(leaf); }
+  g.position.set(x, 0, z);
+  return g;
+}
+
+const reserved = []; // footprints that filler must keep clear of
+function rectOf(f, w, d, setback = 0) {
+  const pts = [toWorld(f, -w / 2, -setback), toWorld(f, w / 2, -setback), toWorld(f, -w / 2, -setback - d), toWorld(f, w / 2, -setback - d)];
+  return { minX: Math.min(...pts.map((p) => p.x)), maxX: Math.max(...pts.map((p) => p.x)), minZ: Math.min(...pts.map((p) => p.z)), maxZ: Math.max(...pts.map((p) => p.z)) };
+}
+function rectFree(r, pad = 1) {
+  if (r.minX < -96 || r.maxX > 96 || r.minZ < -96 || r.maxZ > 94) return false;
+  const hit = (c) => r.minX < c.maxX + pad && r.maxX > c.minX - pad && r.minZ < c.maxZ + pad && r.maxZ > c.minZ - pad;
+  for (const road of ROADS) { // keep roads, sidewalks and gutters clear
+    const c = road.axis === 'x' ? { minX: road.from, maxX: road.to, minZ: road.at - 7.9, maxZ: road.at + 7.9 } : { minX: road.at - 7.9, maxX: road.at + 7.9, minZ: road.from, maxZ: road.to };
+    if (hit(c)) return false;
+  }
+  for (const c of reserved) if (hit(c)) return false;
+  for (const c of colliders) if (!c.hole && hit(c)) return false;
+  return true;
+}
+function placeFiller(root, f, kind, w, d, ci, setback) {
+  const r = rectOf(f, w, d, setback);
+  if (!rectFree(r, 0.8)) return null;
+  const g = fillerBuilding(kind, w, d, ci);
+  g.position.set(f.x, 0, f.z); g.rotation.y = f.rot; g.translateZ(-setback);
+  root.add(g);
+  colliders.push({ minX: r.minX, maxX: r.maxX, minZ: r.minZ, maxZ: r.maxZ });
+  return r;
+}
+function fillTown(root) {
+  R = makeRand(77);
+  let ci = 0;
+  const kinds = ['bungalow', 'shop', 'storey', 'bungalow', 'shop', 'bungalow', 'storey'];
+  // 1) Frontage lots along every road, then a second row behind them.
+  for (const road of ROADS) for (const side of [-1, 1]) {
+    for (let a = road.from + 4; a < road.to - 4;) {
+      const w = Math.round(rr(8, 12)); const d = Math.round(rr(7, 10));
+      const kind = kinds[(ci++) % kinds.length];
+      const f = frontage(road, side, a + w / 2);
+      const r = placeFiller(root, f, kind, w, d, ci, 0.8);
+      if (r) { const f2 = frontage(road, side, a + w / 2 + rr(-1, 1)); placeFiller(root, f2, R() < 0.4 ? 'storey' : 'bungalow', Math.round(rr(8, 11)), Math.round(rr(7, 9)), ci + 3, 0.8 + d + rr(2.5, 4)); }
+      a += r ? w + rr(1.2, 3) : 3;
+    }
+  }
+  // 2) Back-fill whatever is left in the blocks, facing the nearest road.
+  for (let x = -90; x <= 90; x += 12) for (let z = -90; z <= 90; z += 11) {
+    const px = x + rr(-2, 2); const pz = z + rr(-2, 2);
+    const road = nearestRoad(px, pz) || ROADS[0];
+    const side = road.axis === 'x' ? Math.sign(pz - road.at) || 1 : Math.sign(px - road.at) || 1;
+    const along = road.axis === 'x' ? px : pz;
+    const dist = Math.abs((road.axis === 'x' ? pz : px) - road.at);
+    const f = frontage(road, side, along);
+    placeFiller(root, f, R() < 0.3 ? 'storey' : 'bungalow', Math.round(rr(8, 11)), Math.round(rr(7, 9)), ci++, dist - FRONT);
+  }
+  // 3) Trees in the gaps.
+  for (let i = 0; i < 260; i++) {
+    const x = rr(-94, 94); const z = rr(-94, 92);
+    const r = { minX: x - 1, maxX: x + 1, minZ: z - 1, maxZ: z + 1 };
+    if (!rectFree(r, 0.6)) continue;
+    root.add(fillerTree(x, z, rr(0.8, 1.3)));
+    collide(x, z, 0.5, 0.5);
   }
 }
 
@@ -1270,13 +1540,14 @@ export function insideId() { return inside ? inside.id : null; }
 
 export function enterBuilding(id) {
   if (!player || !INTERIOR[id] || inside) return false;
+  if (mapMode) setMapMode(false);
   const p = PLACES3D.find((q) => q.id === id);
   const room = buildInterior(id);
   inside = { ...room, back: p ? { id, x: p.x, z: p.z, road: p.road } : null };
   scene.remove(player); room.scene.add(player);
   player.position.set(0, 0, room.d / 2 - 1.1); player.rotation.y = Math.PI;
   camYaw = 0; insideCam = null; nearId = null; hooks.near(null);
-  const def = window.OGS.World.PLACES.find((x) => x.id === id);
+  const def = placeDef(id);
   if (hooks.inside) hooks.inside(def ? def.name : id);
   return true;
 }
@@ -1339,6 +1610,7 @@ function insideFrame(s, t, dt) {
 let renderer; let scene; let camera; let sky; let sun; let hemi; let skyLight; let stars; let minimap;
 let running = false; let raf = 0; let hooks = null; let player = null; let lastT = 0;
 const traffic = []; const npcs = []; const smoke = []; const smokeSources = [];
+let mapFrame = 0; let mapMode = false; const mapCam = { x: 0, z: 0, h: 80 }; let pinLayer = null; const pins = []; let hostEl = null; const shadowFocus = new THREE.Vector3();
 let camYaw = 0; const camFocus = new THREE.Vector3(); let manualUntil = 0; let nearId = null; let pmrem = null; let envRT = null; let lastSunKey = ''; let mapAt = 0;
 const keys = {};
 
@@ -1407,6 +1679,7 @@ export async function mount(el, h) {
     ['kuto', danfo, -1, 9], ['kuto', keke, 1, 7], ['kuto', okada, 1, 11], ['kuto', danfo, -1, 8],
     ['olumo', keke, -1, 7], ['olumo', danfo, 1, 8], ['olumo', okada, -1, 12],
     ['panseke', okada, 1, 10], ['panseke', keke, -1, 6], ['ibara', danfo, -1, 8], ['ibara', okada, 1, 11],
+    ['okemosan', danfo, 1, 8], ['okemosan', keke, -1, 7], ['okemosan', okada, 1, 12], ['panseke', danfo, 1, 8], ['ibara', keke, -1, 7],
   ];
   lanes.forEach(([rid, make, dir, speed], i) => {
     const road = roadOf(rid); const v = make();
@@ -1423,6 +1696,7 @@ export async function mount(el, h) {
     // people hanging around places (stand still and face you)
     ['kuto', 1, 'trader', true, false, -63, -62.6], ['kuto', -1, 'trader', true, false, -49, -48.6], ['olumo', 1, 'tee', false, false, -65, -64.6],
     ['olumo', 1, 'anago', false, false, -1.5, -1.1], ['kuto', 1, 'tee', false, false, 68.5, 68.9], ['kuto', 1, 'trader', true, true, 5.5, 5.9],
+    ['okemosan', -1, 'corporate', false, false, -60, 20], ['okemosan', 1, 'trader', true, true, -20, 50], ['okemosan', 1, 'tee', false, false, 10, 80], ['okemosan', -1, 'anago', true, false, 20, 60],
   ];
   peds.forEach(([rid, side, outfit, female, tray, a0, a1], i) => {
     const road = roadOf(rid);
@@ -1442,10 +1716,35 @@ export async function mount(el, h) {
 
   window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; if ((e.key === 'e' || e.key === 'Enter') && running) hooks.enter(); });
   window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
-  let drag = null;
-  renderer.domElement.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, yaw: camYaw }; });
-  window.addEventListener('pointermove', (e) => { if (drag) { camYaw = drag.yaw - (e.clientX - drag.x) * 0.006; manualUntil = performance.now() + 5000; } });
-  window.addEventListener('pointerup', () => { drag = null; });
+  let drag = null; const ptrs = new Map(); let pinchD = 0;
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); drag = { x: e.clientX, yaw: camYaw };
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinchD = Math.hypot(a.x - b.x, a.y - b.y); }
+  });
+  window.addEventListener('pointermove', (e) => {
+    const prev = ptrs.get(e.pointerId);
+    if (!prev) return;
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (mapMode) {
+      if (ptrs.size >= 2) { const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (pinchD && d) zoomMap(pinchD / d); pinchD = d; }
+      else { const k = mapWorldPerPx(); mapCam.x -= (e.clientX - prev.x) * k; mapCam.z -= (e.clientY - prev.y) * k * 1.15; clampMap(); }
+    } else if (drag) { camYaw = drag.yaw - (e.clientX - drag.x) * 0.006; manualUntil = performance.now() + 5000; }
+  });
+  const up = (e) => { ptrs.delete(e.pointerId); pinchD = 0; if (!ptrs.size) drag = null; };
+  window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+  renderer.domElement.addEventListener('wheel', (e) => { if (!mapMode) return; e.preventDefault(); zoomMap(1 + e.deltaY * 0.0012); }, { passive: false });
+
+  // Pins for every place (shown on the map view), plus you.
+  hostEl = el;
+  pinLayer = document.createElement('div'); pinLayer.className = 'pin-layer'; el.appendChild(pinLayer);
+  const addPin = (id, icon, name, x, z) => {
+    const b = document.createElement('button'); b.className = 'pin' + (id === 'me' ? ' me' : ''); b.dataset.ui = 'pin'; b.dataset.id = id;
+    b.innerHTML = `<span class="pin-ic">${icon}</span><span class="pin-name">${name}</span>`;
+    pinLayer.appendChild(b); pins.push({ id, x, z, el: b });
+  };
+  for (const p of PLACES3D) { const d = placeDef(p.id); addPin(p.id, PIN_ICON[p.id] || '📍', d ? d.name : p.id, p.cx, p.cz); }
+  addPin('me', s.gender === 'female' ? '🙋🏾‍♀️' : '🙋🏾‍♂️', 'You', 0, 0);
+  setMapMode(true);
   new ResizeObserver(() => { const w = el.clientWidth; const hh = el.clientHeight; if (!w || !hh) return; renderer.setSize(w, hh); camera.aspect = w / hh; camera.updateProjectionMatrix(); }).observe(el);
 
   running = true;
@@ -1472,8 +1771,8 @@ function updateSky(s) {
   const nightAmt = 1 - day;
   for (const m of nightGlow) m.emissiveIntensity = nightAmt * 1.2;
   for (const l of streetLights) { l.bulbMat.emissiveIntensity = nightAmt * 4; l.poolMat.opacity = nightAmt * 0.75; }
-  sun.position.copy(player.position).addScaledVector(dir, 120);
-  sun.target.position.copy(player.position);
+  sun.position.copy(shadowFocus).addScaledVector(dir, 120);
+  sun.target.position.copy(shadowFocus);
   const key = Math.round(elev / 2);
   if (key !== lastSunKey) {
     lastSunKey = key;
@@ -1494,7 +1793,7 @@ function blockedAt(x, z) {
     }
   }
   if (inside) return false;
-  return x < -94 || x > 94 || z < -94 || z > 31;
+  return x < -94 || x > 94 || z < -94 || z > 94;
 }
 
 function nearestRoad(x, z) {
@@ -1511,7 +1810,7 @@ function nearestRoad(x, z) {
 function drawMinimap() {
   const c = minimap.getContext('2d');
   const W = minimap.width; const H = minimap.height;
-  const sx = (x) => ((x + 96) / 192) * W; const sz = (z) => ((z + 100) / 133) * H;
+  const sx = (x) => ((x + 96) / 192) * W; const sz = (z) => ((z + 100) / 200) * H;
   c.clearRect(0, 0, W, H);
   c.fillStyle = 'rgba(30,40,35,.72)'; c.fillRect(0, 0, W, H);
   c.strokeStyle = '#9aa0a6'; c.lineWidth = 4;
@@ -1543,7 +1842,7 @@ function loop(now) {
   const len = Math.hypot(ix, iz);
   let speed = 0;
   if (inside) camYaw = 0; // indoors the camera looks straight into the room
-  if (len > 0.15 && !hooks.blocked()) {
+  if (len > 0.15 && !mapMode && !hooks.blocked()) {
     ix /= Math.max(1, len); iz /= Math.max(1, len);
     const cos = Math.cos(camYaw); const sin = Math.sin(camYaw);
     const mx = ix * cos + iz * sin; const mz = -ix * sin + iz * cos;
@@ -1566,6 +1865,14 @@ function loop(now) {
   }
   s.world3d = { v: 2, x: +player.position.x.toFixed(2), z: +player.position.z.toFixed(2) };
 
+  if (mapMode) {
+    // Lagos-Life style map: a high camera you pan and zoom; tap the pins.
+    camera.position.set(mapCam.x, mapCam.h, mapCam.z + mapCam.h * 0.6);
+    camera.lookAt(mapCam.x, 0, mapCam.z);
+    shadowFocus.set(mapCam.x, 0, mapCam.z);
+    if ((mapFrame++ % 20) === 0) renderer.shadowMap.needsUpdate = true;
+    updatePins();
+  } else {
   // Camera: from the road side, looking at the buildings you're near
   if (now > manualUntil) {
     const road = nearestRoad(player.position.x, player.position.z);
@@ -1581,13 +1888,18 @@ function loop(now) {
   camera.position.set(camFocus.x + Math.sin(camYaw) * 10, 5.2, camFocus.z + Math.cos(camYaw) * 10);
   camera.lookAt(camFocus.x, 2.2, camFocus.z);
   hideBlockingPoles();
+  shadowFocus.copy(player.position);
+  }
+  const ext = mapMode ? Math.min(130, Math.max(40, mapCam.h * 0.95)) : 38;
+  if (sun.shadow.camera.right !== ext) { Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext }); sun.shadow.camera.updateProjectionMatrix(); }
+  scene.fog.near = mapMode ? 220 : 80; scene.fog.far = mapMode ? 650 : 360;
 
   let near = null;
-  for (const p of PLACES3D) if (Math.hypot(player.position.x - p.x, player.position.z - p.z) < 2.6) { near = p; break; }
+  if (!mapMode) for (const p of PLACES3D) if (Math.hypot(player.position.x - p.x, player.position.z - p.z) < 2.6) { near = p; break; }
   const id = near && near.id;
   if (id !== nearId) {
     nearId = id;
-    const def = id && window.OGS.World.PLACES.find((x) => x.id === id);
+    const def = id && placeDef(id);
     hooks.near(def || null);
   }
   // Walk through a door to go inside (once you've stepped away after leaving).
@@ -1631,6 +1943,43 @@ function loop(now) {
   renderer.render(scene, camera);
   if (now > mapAt) { mapAt = now + 200; drawMinimap(); }
 }
+
+// ---------- map view ----------
+function mapWorldPerPx() { const dist = mapCam.h * Math.hypot(1, 0.6); return (2 * dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / Math.max(1, hostEl.clientHeight); }
+function clampMap() { mapCam.x = THREE.MathUtils.clamp(mapCam.x, -90, 90); mapCam.z = THREE.MathUtils.clamp(mapCam.z, -100, 70); }
+function zoomMap(k) { mapCam.h = THREE.MathUtils.clamp(mapCam.h * k, 22, 170); }
+const pinV = new THREE.Vector3();
+function updatePins() {
+  if (!pinLayer) return;
+  const w = hostEl.clientWidth; const h = hostEl.clientHeight;
+  for (const p of pins) {
+    if (p.id === 'me') pinV.set(player.position.x, 2.4, player.position.z); else pinV.set(p.x, 4, p.z);
+    pinV.project(camera);
+    const sx = (pinV.x * 0.5 + 0.5) * w; const sy = (-pinV.y * 0.5 + 0.5) * h;
+    const on = pinV.z < 1 && sx > -30 && sx < w + 30 && sy > -30 && sy < h + 30;
+    p.el.style.display = on ? '' : 'none';
+    if (on) p.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+  }
+}
+export function setMapMode(on) {
+  if (!player) return;
+  if (on && inside) exitBuilding();
+  mapMode = !!on;
+  if (mapMode) {
+    mapCam.x = player.position.x; mapCam.z = player.position.z - 8; mapCam.h = camera.aspect < 0.8 ? 120 : 95; clampMap();
+    for (const p of poles) p.visible = true;
+    nearId = null; hooks.near(null);
+  } else {
+    camFocus.copy(player.position);
+  }
+  if (pinLayer) pinLayer.hidden = !mapMode;
+  if (minimap) minimap.style.display = mapMode ? 'none' : '';
+  renderer.shadowMap.autoUpdate = !mapMode; renderer.shadowMap.needsUpdate = true;
+  if (hooks.mode) hooks.mode(mapMode ? 'map' : 'walk');
+}
+export function isMapMode() { return mapMode; }
+export function setNames(on) { if (pinLayer) pinLayer.classList.toggle('names', !!on); }
+export function focusPlace(id) { const p = PLACES3D.find((q) => q.id === id); if (p) { mapCam.x = p.cx; mapCam.z = p.cz; clampMap(); } }
 
 // Phone → GoRide: drop the player at a place's gate, facing it.
 export function travelTo(id) {
