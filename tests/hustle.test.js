@@ -159,3 +159,72 @@ test('2D world: every building action exists and buildings do not overlap', () =
     assert.ok(!overlap, `${a.id} overlaps ${b.id}`);
   }
 });
+
+test('starts: nepo, lapo and village lottery outcomes', () => {
+  const n = H.newHustleGame({ seed: 3, start: 'nepo' });
+  assert.strictEqual(n.hustle.start, 'nepo');
+  assert.strictEqual(n.money, 500000);
+  assert.strictEqual(n.hustle.house, 'duplex');
+  assert.ok(n.job && n.job.salary === 650000);
+  assert.ok(n.assets.some((a) => a.id === 'car-corolla'));
+  const l = H.newHustleGame({ seed: 3, start: 'lapo' });
+  assert.strictEqual(l.hustle.bank.loan, 72000);
+  assert.strictEqual(l.hustle.bank.weekly, 12000);
+  const v = H.newHustleGame({ seed: 3 });
+  assert.strictEqual(v.hustle.start, 'village');
+  assert.strictEqual(v.money, H.START_CASH);
+  assert.ok(H.unread(v) >= 2, 'welcome messages');
+  H.markRead(v);
+  assert.strictEqual(H.unread(v), 0);
+});
+
+test('phone bank: loans, repayment on Saturday, savings', () => {
+  const s = H.newHustleGame({ seed: 5, start: 'lapo' });
+  assert.ok(!H.takeLoan(s, 10000).ok, 'one loan at a time');
+  s.money = 200000;
+  assert.ok(H.repayLoan(s, 72000).ok);
+  assert.strictEqual(s.hustle.bank.loan, 0);
+  assert.ok(!H.takeLoan(s, H.loanLimit(s) + 1000).ok, 'limit enforced');
+  const before = s.money;
+  assert.ok(H.takeLoan(s, 50000).ok);
+  assert.strictEqual(s.money, before + 50000);
+  assert.strictEqual(s.hustle.bank.loan, 60000);
+  assert.ok(H.deposit(s, 100000).ok);
+  assert.strictEqual(s.hustle.bank.savings, 100000);
+  toSaturday(s);
+  clearEvents(s); L.fastForward(s, 'day'); clearEvents(s);
+  assert.ok(s.hustle.bank.loan < 60000, 'weekly repayment taken');
+  assert.ok(s.hustle.bank.savings > 100000, 'interest paid');
+  const sv = s.hustle.bank.savings;
+  assert.ok(H.withdraw(s, sv).ok);
+  assert.strictEqual(s.hustle.bank.savings, 0);
+});
+
+test('GoRide, betting and befriending people nearby', () => {
+  const s = H.newHustleGame({ seed: 9 });
+  assert.strictEqual(H.rideFare(0), 800);
+  assert.ok(H.rideFare(2000) > H.rideFare(500));
+  const m = s.money;
+  assert.ok(H.ride(s, 1000, 'Kuto Market').ok);
+  assert.strictEqual(s.money, m - H.rideFare(1000));
+  s.money = 100000;
+  const r = H.placeBet(s, 1000, 2);
+  assert.ok(s.money === 99000 || s.money === 101000, `bet settled: ${s.money}`);
+  assert.ok(!H.placeBet(s, 1000, 2).ok, 'one ticket per odds per day');
+  assert.ok(typeof r.msg === 'string');
+  let made = false;
+  for (const name of ['Tunde', 'Bisi', 'Kunle', 'Yemi', 'Femi', 'Sade', 'Dayo', 'Tope']) if (H.befriend(s, name).ok) { made = name; break; }
+  assert.ok(made, 'made a friend');
+  assert.ok(s.relations.some((p) => p.role === 'friend' && p.first === made));
+  assert.ok(!H.befriend(s, made).ok, 'already friends');
+});
+
+test('bladder: the toilet resets it and autopilot keeps you dry', () => {
+  const s = H.newHustleGame({ seed: 11 });
+  s.needs.bladder = 10;
+  assert.ok(L.doAction(s, 'toilet').ok);
+  assert.ok(s.needs.bladder >= 95);
+  s.auto = true;
+  for (let d = 0; d < 5; d++) { clearEvents(s); L.fastForward(s, 'day'); clearEvents(s); }
+  assert.ok(!s.log.some((l) => l.text.includes('could not hold it')), 'no accidents on autopilot');
+});

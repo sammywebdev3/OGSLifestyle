@@ -24,6 +24,26 @@ The map and live data need an internet connection.
 **₦50,000** and a 1-room self-contain. Your goal is to become the biggest name in Ogun State.
 Each day runs **morning → hustle → evening → lifestyle**.
 
+### 🎮 The game screen (Lagos-Life style)
+
+Hustle Mode plays full screen in 3D Abeokuta with a game HUD:
+
+- **HUD:**
+  - your avatar, level and cash;
+  - the clock with play/pause and speed;
+  - need rings for hunger, energy, hygiene, bladder, fun and social;
+  - a minimap;
+  - context buttons such as **💼 Go to work**, your hustle, 🚽 Toilet, 🛵 Order food and 🛏️ Sleep.
+- **📱 The phone** (bottom right) has 16 apps:
+  - Jobs, Bank (save, borrow, repay) and Messages (landlord, family, friends, brands);
+  - ChopNow food delivery and GoRide (ride anywhere in town);
+  - Houses, Cars, Shop (drip) and SocialGram;
+  - Contacts, SureOdds betting, Street (crime), Me, My Story, Store and Settings.
+- **👥 People nearby:** walk up to someone on the street, gist with them and make friends.
+- **🎲 Birth lottery:** there is no picking — every new life automatically spins **NEPO** (₦500k, a Corolla, a bank job and a duplex),
+  **LAPO** (a ₦60k microfinance loan to repay every Saturday) or **VILLAGE** (₦50k and a dream).
+- *Settings → Classic menus & Ogun map* switches to the old tabbed view; **🎮 Back to the game** returns.
+
 - **3 hustles:**
   - **Adire seller:** buy at Itoku and sell around Kuto/Panseke. You can also carry stock to Lagos
     for the best price, but watch for LASTMA. Prices change every day.
