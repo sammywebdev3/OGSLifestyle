@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>OGS Lifestyle</title>
+  <meta name="description" content="Ogun State life simulator — grow up, go to school, work and live across a real map of Ogun State, Nigeria.">
+  <meta name="theme-color" content="#0b6e4f">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">OGS</span><span class="brand-sub">Lifestyle</span></div>
+    <div class="who" id="who"></div>
+    <div class="menu">
+      <button class="icon-btn" data-ui="save" title="Export save file">💾</button>
+      <button class="icon-btn" data-ui="load" title="Import save file">📂</button>
+      <button class="icon-btn" data-ui="new" title="Start a new life">✨</button>
+      <input type="file" id="load-file" accept=".json,application/json" hidden>
+    </div>
+  </header>
+
+  <section class="stats" id="stats"></section>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="life" class="active">📜 Life</button>
+    <button data-tab="map">🗺️ Map</button>
+    <button data-tab="education">🎓 School</button>
+    <button data-tab="career">💼 Career</button>
+    <button data-tab="people">👪 People</button>
+    <button data-tab="activities">🎯 Activities</button>
+    <button data-tab="assets">🏠 Assets</button>
+  </nav>
+
+  <main id="main">
+    <section class="panel active" id="panel-life"></section>
+    <section class="panel" id="panel-map">
+      <div class="map-tools">
+        <form id="map-search" class="map-search" autocomplete="off">
+          <input type="search" id="map-q" placeholder="Search any place in Ogun State…" aria-label="Search places">
+          <button type="submit">Search</button>
+        </form>
+        <button id="live-btn" class="secondary" title="Load every real school, hospital, market and more from OpenStreetMap in the current view">📡 Live OSM places</button>
+        <button id="me-btn" class="secondary">📍 Me</button>
+      </div>
+      <div id="search-results" class="search-results" hidden></div>
+      <div id="map"></div>
+      <p class="map-note" id="map-note">Tap a marker to visit, apply or see jobs. Zoom in and press <b>Live OSM places</b> to load every real school, hospital and market in view.</p>
+    </section>
+    <section class="panel" id="panel-education"></section>
+    <section class="panel" id="panel-career"></section>
+    <section class="panel" id="panel-people"></section>
+    <section class="panel" id="panel-activities"></section>
+    <section class="panel" id="panel-assets"></section>
+  </main>
+
+  <footer class="age-bar">
+    <button id="age-btn" class="age-btn">＋ Age a year</button>
+  </footer>
+
+  <div class="modal" id="modal" hidden>
+    <div class="modal-card" id="modal-card" role="dialog" aria-modal="true"></div>
+  </div>
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="js/data.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>
