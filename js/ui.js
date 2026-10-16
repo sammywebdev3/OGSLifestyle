@@ -994,7 +994,7 @@
         <div class="seg"><label><input type="radio" name="gender" value="male" checked>👦🏾 Guy</label><label><input type="radio" name="gender" value="female">👧🏾 Babe</label></div>
         <label>First name<input name="first" required maxlength="20" placeholder="e.g. Ayomide"></label>
         <label>Surname<input name="last" required maxlength="20" placeholder="e.g. Odusanya"></label>
-        <div id="hustle-fields"><label>How do you start?<select name="start"><option value="spin">🎲 Spin the birth lottery (Nepo / LAPO / Village)</option>${Object.entries(HU.STARTS).map(([k, v]) => `<option value="${k}">${v.emoji} ${v.label}</option>`).join('')}</select></label>
+        <div id="hustle-fields"><p class="small muted">🎲 Your start is decided by the birth lottery: NEPO, LAPO or VILLAGE. No choosing — fate decides!</p>
           <label>Your village (where your family lives)<select name="village">${villages.map((x) => `<option value="${x.id}" ${x.id === 'ogbere' ? 'selected' : ''}>${h(x.name)} (${h(E.lgaName(x.lga))})</option>`).join('')}</select></label></div>
         <div id="life-fields" hidden>
           <label>Hometown<select name="town">${towns.map((x) => `<option value="${x.id}" ${x.id === 'abeokuta' ? 'selected' : ''}>${h(x.name)} (${h(E.lgaName(x.lga))})</option>`).join('')}</select></label>
@@ -1034,8 +1034,7 @@
         toast(isH() ? 'Press ▶ to start the clock. Open your 📱 Phone to find work.' : 'Press ▶ to start the clock.', 'good');
       };
       if (fd.get('mode') === 'hustle') {
-        if (fd.get('start') === 'spin') return lottery(base, fd.get('village'), begin);
-        return begin(HU.newHustleGame({ ...base, village: fd.get('village'), start: fd.get('start') }));
+        return lottery(base, fd.get('village'), begin);
       }
       S = E.newGame({ ...base, town: fd.get('town'), wealth: fd.get('wealth') || undefined });
       lastMapTown = null;

@@ -40,7 +40,7 @@ Hustle Mode plays full screen in 3D Abeokuta with a game HUD:
   - Houses, Cars, Shop (drip) and SocialGram;
   - Contacts, SureOdds betting, Street (crime), Me, My Story, Store and Settings.
 - **👥 People nearby:** walk up to someone on the street, gist with them and make friends.
-- **🎲 Birth lottery:** every new life spins **NEPO** (₦500k, a Corolla, a bank job and a duplex),
+- **🎲 Birth lottery:** there is no picking — every new life automatically spins **NEPO** (₦500k, a Corolla, a bank job and a duplex),
   **LAPO** (a ₦60k microfinance loan to repay every Saturday) or **VILLAGE** (₦50k and a dream).
 - *Settings → Classic menus & Ogun map* switches to the old tabbed view; **🎮 Back to the game** returns.
 
