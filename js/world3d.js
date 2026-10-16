@@ -167,6 +167,7 @@ function collide(cx, cz, w, d) { colliders.push({ minX: cx - w / 2, maxX: cx + w
 
 const nightGlow = []; // window glass materials that glow at night
 const streetLights = [];
+const poles = []; // street-light posts, hidden while they block the camera
 
 function windowUnit(g, x, y, z, w = 1.2, h = 1.2, face = 1) {
   // One shared glass material, so every window glows at night in a single draw call.
@@ -270,7 +271,7 @@ function palm(x, z, s = 1) {
   return g;
 }
 
-function pole(x, z) {
+function pole(x, z, root) {
   const g = new THREE.Group();
   const wood = mat('pole', { color: '#5a4630', roughness: 0.95 });
   const p = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 9, 8), wood); p.position.y = 4.5; p.castShadow = true; g.add(p);
@@ -280,11 +281,16 @@ function pole(x, z) {
   g.add(box(0.3, 0.05, 0.15, bulbMat, 0.5, 7.52, 0.4, { cast: false }));
   // A soft pool of light on the ground instead of a real light (much cheaper on phones).
   const poolMat = M.pool || (M.pool = new THREE.MeshBasicMaterial({ map: canvasTex('pool', 128, 128, (c) => { const gr = c.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,200,120,.9)'); gr.addColorStop(1, 'rgba(255,200,120,0)'); c.fillStyle = gr; c.fillRect(0, 0, 128, 128); }), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
-  const pool = new THREE.Mesh(new THREE.PlaneGeometry(9, 9), poolMat); pool.rotation.x = -Math.PI / 2; pool.position.set(0.5, 0.25, 0.8); pool.userData.dynamic = true; g.add(pool);
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(9, 9), poolMat); pool.rotation.x = -Math.PI / 2; pool.position.set(x + 0.5, 0.25, z + 0.8); root.add(pool);
   if (!streetLights.length) streetLights.push({ bulbMat, poolMat });
   g.position.set(x, 0, z);
   collide(x, z, 0.4, 0.4);
-  return g;
+  // Each post is merged on its own (not into the town) so it can be hidden when it blocks the view.
+  const post = mergeStatic(g);
+  post.position.set(0, 0, 0);
+  post.userData.x = x; post.userData.z = z;
+  poles.push(post);
+  return post;
 }
 
 function wires(scene, xs, z) {
@@ -734,7 +740,7 @@ function buildTown(root) {
   for (const [x, z] of palmSpots) root.add(palm(x, z, rr(0.85, 1.15)));
   for (const road of ROADS.filter((r) => r.axis === 'x')) {
     const px = []; for (let x = -90; x <= 90; x += 20) if (!xs.some((c) => Math.abs(c - x) < CROSS + 1)) px.push(x);
-    for (const x of px) root.add(pole(x, road.at - 4.9));
+    for (const x of px) pole(x, road.at - 4.9, root);
     wires(root, px, road.at - 4.9);
   }
 
@@ -772,6 +778,19 @@ function mergeStatic(root) {
     out.add(m);
   }
   return out;
+}
+
+// Hide any lamp post standing between the camera and the player.
+function hideBlockingPoles() {
+  const ax = camera.position.x; const az = camera.position.z;
+  const dx = player.position.x - ax; const dz = player.position.z - az;
+  const len2 = dx * dx + dz * dz || 1;
+  for (const p of poles) {
+    const px = p.userData.x - ax; const pz = p.userData.z - az;
+    const t = (px * dx + pz * dz) / len2;
+    const cx = px - t * dx; const cz = pz - t * dz;
+    p.visible = !(t > -0.1 && t < 1.15 && cx * cx + cz * cz < 1.6 * 1.6);
+  }
 }
 
 // ---------- scene setup ----------
@@ -832,6 +851,7 @@ export async function mount(el, h) {
   const root = new THREE.Group();
   buildTown(root);
   scene.add(mergeStatic(root));
+  for (const p of poles) scene.add(p);
 
   const s = hooks.state();
   player = makePlayer(s);
@@ -1008,6 +1028,7 @@ function loop(now) {
   camFocus.lerp(player.position, 1 - Math.pow(0.001, dt));
   camera.position.set(camFocus.x + Math.sin(camYaw) * 10, 5.2, camFocus.z + Math.cos(camYaw) * 10);
   camera.lookAt(camFocus.x, 2.2, camFocus.z);
+  hideBlockingPoles();
 
   let near = null;
   for (const p of PLACES3D) if (Math.hypot(player.position.x - p.x, player.position.z - p.z) < 2.6) { near = p; break; }
