@@ -29,6 +29,7 @@
   const HUSTLE_ONLY_TABS = ['hustle', 'store', 'world'];
   const WO = root.OGS.World;
   let worldNear = null;
+  let insideName = null; // the building you are inside (3D), if any
   let worldSheet = null;
   const clock = { running: false, speed: 1, acc: 0, saveAcc: 0 };
   const ui = {
@@ -239,7 +240,23 @@
     state: () => S,
     ads: () => (ST.adsRemoved() ? [] : AB.active()),
     near: (p) => { worldNear = p; if (!p) worldSheet = null; renderWorldHud(); },
-    enter: () => { if (worldNear && !modalOpen()) { worldSheet = worldNear; renderWorldHud(); } },
+    enter: () => {
+      if (!worldNear || modalOpen()) return;
+      const w = window.__ogs3d;
+      if (viewMode === '3d' && w && w.hasInterior(worldNear.id) && !w.insideId()) { if (worldHooks.tryEnter(worldNear.id)) w.enterBuilding(worldNear.id); return; }
+      worldSheet = worldNear; renderWorldHud();
+    },
+    // Walking into a building: the landlord's padlock is the only thing that stops you.
+    tryEnter: (id) => {
+      if (worldHooks.blocked()) return false;
+      if (id === 'home' && S.hustle && S.hustle.lockedOut) {
+        toast('🔒 Your landlord locked the door. Pay your rent to get back in.', 'bad');
+        worldSheet = WO.PLACES.find((p) => p.id === 'home'); renderWorldHud();
+        return false;
+      }
+      return true;
+    },
+    inside: (name) => { insideName = name; worldSheet = null; renderWorldHud(); },
     blocked: () => modalOpen() || !!worldSheet || phone.open || !!(S && S.events.length),
   };
 
@@ -249,7 +266,13 @@
     setHTML($('#world-needs'), meter('🍲', n.hunger) + meter('⚡', n.energy) + meter('🚿', n.hygiene) + meter('🎮', n.fun) + meter('💬', n.social));
     const prompt = $('#world-prompt');
     prompt.hidden = !worldNear || !!worldSheet;
-    if (worldNear) prompt.textContent = `🚪 ${worldNear.name}`;
+    if (worldNear) {
+      const canGoIn = !worldNear.icon && viewMode === '3d' && window.__ogs3d && window.__ogs3d.hasInterior(worldNear.id) && !insideName;
+      prompt.textContent = `${worldNear.icon || '🚪'} ${canGoIn ? 'Enter ' : ''}${worldNear.name}`;
+    }
+    const leave = $('#world-leave');
+    leave.hidden = !insideName || viewMode !== '3d' || !!worldSheet;
+    if (insideName) { leave.textContent = '🚪 Leave'; leave.title = `Leave ${insideName}`; }
     const sheet = $('#world-sheet');
     sheet.hidden = !worldSheet;
     if (worldSheet && worldSheet.id === '__people') showPeopleNearby();
@@ -1025,6 +1048,7 @@
       const fd = new FormData(ev.target);
       const base = { first: fd.get('first').trim(), last: fd.get('last').trim(), gender: fd.get('gender') };
       const begin = (state) => {
+        if (window.__ogs3d) window.__ogs3d.exitBuilding();
         S = state;
         lastMapTown = null; overlayKey = null; classicView = false;
         closeModal();
@@ -1181,6 +1205,7 @@
       case 'view-2d': setView('2d'); return;
       case 'view-3d': setView('3d'); return;
       case 'world-close': worldSheet = null; renderWorldHud(); return;
+      case 'leave-building': if (window.__ogs3d) window.__ogs3d.exitBuilding(); return;
       case 'random-name': randomName(); return;
       case 'phone': if (phone.open) closePhone(); else openPhone(); return;
       case 'app': openPhone(el.dataset.app); return;
