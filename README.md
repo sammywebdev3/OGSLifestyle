@@ -164,6 +164,27 @@ and the life-sim side moves on: school years, WAEC/JAMB, promotions, ageing and 
   - In office, you choose whether to build projects or pocket the allowance. The EFCC, election
     tribunals and impeachments can follow.
 
+## Deploy on Vercel (free)
+
+It's a static site, so there's no build step and no server.
+
+1. Push this repo to GitHub. It's already there.
+2. Go to [vercel.com/new](https://vercel.com/new), sign in with GitHub and **Import** the
+   `OGSLifestyle` repo.
+3. Use these project settings:
+   - **Framework Preset:** *Other*
+   - **Build Command:** leave empty
+   - **Output Directory:** leave empty (Vercel serves the repo root)
+   - **Install Command:** leave empty
+4. Click **Deploy**. You'll get a URL like `https://ogs-lifestyle.vercel.app`.
+
+From then on, every push to `main` redeploys automatically, and every pull request gets its own
+preview URL. `vercel.json` stops the service worker and scripts from being cached for too long,
+so updates reach players quickly. HTTPS is automatic, so players can install the game on Android
+with **Add to Home screen**.
+
+Alternatively, you can deploy from the command line with `npm i -g vercel && vercel` in the project folder.
+
 ## Features
 
 - **Real map**: Leaflet with OpenStreetMap tiles and the real Ogun State boundary.
