@@ -75,6 +75,27 @@ In Hustle Mode the **Abeokuta** tab is a walkable top-down pixel-art town built 
 - **Better art later:** a hired artist can replace the drawing functions with real sprite sheets
   without touching the game rules.
 
+### 🧱 3D test street
+
+The Abeokuta tab has a **2D / 3D** switch, with 3D as the default. The 3D view is a test street
+built with [Three.js](https://threejs.org) (`js/world3d.js`), loaded only when you open it:
+
+- **Lighting:** a real sky and sun that follow the game clock (sunrise ~6:24, golden hour, sunset
+  ~18:48), soft shadows, reflections from the sky, street lights and window glow at night, and
+  stars.
+- **Textures** are all generated in code:
+  - plastered walls with red-earth splash and rain streaks, rusty corrugated zinc, cracked
+    asphalt with potholes, laterite, concrete;
+  - adire and ankara cloth, palm fronds, granite.
+- **Scenery:** your compound (GOD'S GRACE VILLA), Iya Basira buka with smoking pots, a storey
+  building with a game centre and balcony, a mosque with a dome and minaret, a billboard, Itoku
+  adire market, Kuto Motor Park with danfos, open gutters with slab crossings, power poles with
+  sagging wires, and Olumo Rock behind the town.
+- **Life:** a danfo ("No Condition Is Permanent"), a keke and an okada drive by. A trader walks with
+  a basin on her head, and a TRACE officer watches you.
+- **Controls:** joystick or WASD to walk, and drag to turn the camera. Doors open the same action
+  sheet as the 2D town.
+
 ### Monetization hooks (not live yet)
 
 - **Ads Board** (`js/adboard.js`): billboards appear on the map, in ad breaks and on the Today
@@ -191,6 +212,7 @@ and the life-sim side moves on: school years, WAEC/JAMB, promotions, ageing and 
 | `js/society.js` | Crime, police, courts, prison life, connections, parties and elections |
 | `js/hustle.js` | Hustle Mode: 3 hustles, sapa, clout & levels, rent lock-out, TRACE, owambe, zones |
 | `js/world.js` | 2D walkable Abeokuta (Phaser 3), with all pixel art drawn in code |
+| `js/world3d.js` | 3D test street (Three.js), with procedural textures and a real-time sky, sun and shadows |
 | `js/adboard.js`, `js/store.js` | Sponsor billboards and the store (payments adapter hook) |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Installable, offline-capable PWA |
 | `js/map.js` | Leaflet map, live OSM layer and search |

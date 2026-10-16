@@ -568,6 +568,8 @@
 
   // On-screen joystick for phones.
   function bindJoystick(el) {
+    if (!el || el.dataset.bound) return;
+    el.dataset.bound = '1';
     const knob = el.querySelector('.knob');
     let id = null; let cx = 0; let cy = 0;
     const R = 44;
@@ -609,7 +611,7 @@
   function pause() { if (game && sceneRef) { game.loop.sleep(); } }
   function resume() { if (game) { game.loop.wake(); game.scale.refresh(); } }
 
-  const World = { PLACES, mount, pause, resume, joy, isMounted: () => !!game, scene: () => sceneRef };
+  const World = { PLACES, mount, pause, resume, joy, bindJoystick, isMounted: () => !!game, scene: () => sceneRef };
 
   root.OGS = root.OGS || {};
   root.OGS.World = World;

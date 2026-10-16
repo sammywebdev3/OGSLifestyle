@@ -268,12 +268,46 @@
       <p class="small muted">${h(p.blurb)}</p>${acts.length ? `<div class="acts">${actionButtons(acts)}</div>` : ''}${extra}`;
   }
 
+  let viewMode = (() => { try { return localStorage.getItem('ogs-view') || '3d'; } catch (e) { return '3d'; } })();
+  let w3d = null; // the 3D module, loaded on demand
+
+  function load3D() {
+    if (!w3d) w3d = import(new URL('js/world3d.js', document.baseURI).href);
+    return w3d;
+  }
+
+  function pauseWorlds() {
+    if (WO && WO.isMounted()) WO.pause();
+    if (w3d) w3d.then((m) => m.isMounted() && m.pause()).catch(() => {});
+  }
+
   function openWorld() {
     if (!WO) return;
+    WO.bindJoystick($('#joystick'));
+    $('#view-2d').classList.toggle('on', viewMode === '2d');
+    $('#view-3d').classList.toggle('on', viewMode === '3d');
+    $('#world').hidden = viewMode !== '2d';
+    $('#world3d').hidden = viewMode !== '3d';
+    worldNear = null; worldSheet = null;
+    pauseWorlds();
+    if (viewMode === '3d') {
+      const el = $('#world3d');
+      load3D()
+        .then((m) => (m.isMounted() ? m.resume() : m.mount(el, worldHooks)))
+        .then(() => { const l = el.querySelector('.world-loading'); if (l) l.remove(); })
+        .catch((e) => { console.error(e); el.innerHTML = '<p class="world-loading">Could not load the 3D engine. Check your internet connection, or switch to 2D.</p>'; });
+      return;
+    }
     if (WO.isMounted()) { WO.resume(); return; }
     WO.mount($('#world'), $('#joystick'), worldHooks)
-      .then(() => { const l = document.querySelector('.world-loading'); if (l) l.remove(); })
+      .then(() => { const l = $('#world').querySelector('.world-loading'); if (l) l.remove(); })
       .catch(() => { $('#world').innerHTML = '<p class="world-loading">Could not load the 2D engine. Check your internet connection and try again.</p>'; });
+  }
+
+  function setView(mode) {
+    viewMode = mode;
+    try { localStorage.setItem('ogs-view', mode); } catch (e) { /* ignore */ }
+    openWorld();
   }
 
   // ----- hustle -----
@@ -829,7 +863,7 @@
     tab = name;
     document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
     document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === 'panel-' + name));
-    if (name !== 'world' && WO && WO.isMounted()) WO.pause();
+    if (name !== 'world') pauseWorlds();
     if (name === 'world') { openWorld(); if (S) renderWorldHud(); window.scrollTo({ top: 0 }); return; }
     if (name === 'map') {
       if (!mapReady && root.L) {
@@ -915,6 +949,8 @@
       case 'new': showNewGame(); return;
       case 'close': clearInterval(adTimer); closeModal(); return;
       case 'world-enter': worldHooks.enter(); return;
+      case 'view-2d': setView('2d'); return;
+      case 'view-3d': setView('3d'); return;
       case 'world-close': worldSheet = null; renderWorldHud(); return;
       case 'random-name': randomName(); return;
     }
