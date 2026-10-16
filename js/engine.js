@@ -188,7 +188,7 @@
       politics: { party: null, office: null, popularity: 0, candidacy: null, terms: 0, rigged: false, embezzled: 0 },
       daily: true,
       clock: { day: 1, dow: 0, min: 8 * 60 },
-      needs: { hunger: 80, energy: 90, hygiene: 85, fun: 70, social: 70 },
+      needs: { hunger: 80, energy: 90, hygiene: 85, fun: 70, social: 70, bladder: 90 },
       dayActs: {}, auto: true,
       events: [],
       log: [],
@@ -1616,7 +1616,7 @@
       s.politics = { party: null, office: null, popularity: 0, candidacy: null, terms: 0, rigged: false, embezzled: 0 };
       s.daily = true;
       s.clock = { day: 1, dow: 0, min: 8 * 60 };
-      s.needs = { hunger: 80, energy: 90, hygiene: 85, fun: 70, social: 70 };
+      s.needs = { hunger: 80, energy: 90, hygiene: 85, fun: 70, social: 70, bladder: 90 };
       s.dayActs = {};
       s.auto = true;
       s.version = 2;

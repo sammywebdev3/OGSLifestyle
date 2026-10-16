@@ -858,12 +858,17 @@ export async function mount(el, h) {
     ['kuto', 1, 'trader', true, true, -80, -40], ['kuto', -1, 'tee', false, false, -60, 20], ['kuto', 1, 'trader', true, false, -10, 30], ['kuto', -1, 'trace', false, false, 30, 30.5],
     ['kuto', 1, 'tee', false, false, 50, 80], ['olumo', -1, 'trader', true, true, -10, 25], ['olumo', 1, 'tee', false, false, -80, -55], ['olumo', 1, 'anago', true, false, 0, 30],
     ['panseke', -1, 'tee', false, false, -50, -10], ['ibara', 1, 'corporate', false, false, -50, -10],
+    // people hanging around places (stand still and face you)
+    ['kuto', 1, 'trader', true, false, -63, -62.6], ['kuto', -1, 'trader', true, false, -49, -48.6], ['olumo', 1, 'tee', false, false, -65, -64.6],
+    ['olumo', 1, 'anago', false, false, -1.5, -1.1], ['kuto', 1, 'tee', false, false, 68.5, 68.9], ['kuto', 1, 'trader', true, true, 5.5, 5.9],
   ];
   peds.forEach(([rid, side, outfit, female, tray, a0, a1], i) => {
     const road = roadOf(rid);
     const p = person({ female, outfit, tray, skin: SKINS[i % 4] });
     scene.add(p);
-    npcs.push({ p, road, off: road.at + side * 5.6, a0, a1, a: a0 + R() * (a1 - a0), dir: R() < 0.5 ? 1 : -1, still: a1 - a0 < 1 });
+    const names = window.OGS.Data.NAMES[female ? 'female' : 'male'];
+    const name = outfit === 'trace' ? 'Officer ' + names[i % names.length] : names[(i * 7) % names.length];
+    npcs.push({ p, road, name, female, outfit, off: road.at + side * 5.6, a0, a1, a: a0 + R() * (a1 - a0), dir: R() < 0.5 ? 1 : -1, still: a1 - a0 < 1 });
   });
   const smokeTex = canvasTex('smoke', 64, 64, (c) => { const g = c.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(220,220,220,.6)'); g.addColorStop(1, 'rgba(220,220,220,0)'); c.fillStyle = g; c.fillRect(0, 0, 64, 64); });
   for (const src of smokeSources) for (let i = 0; i < 12; i++) { const sm = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, transparent: true, depthWrite: false })); sm.userData = { t: i / 12, src }; scene.add(sm); smoke.push(sm); }
@@ -1046,6 +1051,29 @@ function loop(now) {
   updateSky(s);
   renderer.render(scene, camera);
   if (now > mapAt) { mapAt = now + 200; drawMinimap(); }
+}
+
+// Phone → GoRide: drop the player at a place's gate, facing it.
+export function travelTo(id) {
+  const p = PLACES3D.find((q) => q.id === id);
+  if (!p || !player) return false;
+  const road = ROADS.find((r) => r.name === p.road);
+  const towardRoad = road.axis === 'x' ? Math.sign(road.at - p.z) : Math.sign(road.at - p.x);
+  const x = road.axis === 'x' ? p.x : p.x + towardRoad * 2.4;
+  const z = road.axis === 'x' ? p.z + towardRoad * 2.4 : p.z;
+  player.position.set(x, 0, z); camFocus.set(x, 0, z);
+  camYaw = road.axis === 'x' ? (z < road.at ? 0 : Math.PI) : (x < road.at ? Math.PI / 2 : -Math.PI / 2);
+  return true;
+}
+export function distanceTo(id) {
+  const p = PLACES3D.find((q) => q.id === id);
+  return p && player ? Math.hypot(player.position.x - p.x, player.position.z - p.z) : 0;
+}
+export function placesList() { return PLACES3D.map((p) => ({ ...p })); }
+// People within a few metres (for the 👥 button).
+export function nearbyPeople(radius = 7) {
+  if (!player) return [];
+  return npcs.filter((n) => n.p.position.distanceTo(player.position) < radius).map((n) => ({ name: n.name, female: n.female, outfit: n.outfit }));
 }
 
 export function pause() { running = false; cancelAnimationFrame(raf); }

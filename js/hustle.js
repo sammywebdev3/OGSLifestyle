@@ -59,6 +59,13 @@
 
   function isHustle(s) { return !!s.hustle; }
 
+  // Birth lottery, like Lagos Life: Nepo (connected), LAPO (loan) or Village (₦50k).
+  const STARTS = {
+    nepo: { label: 'NEPO', emoji: '🤑', desc: '₦500,000 in the bank, a Toyota Corolla, a Branch Manager job and a duplex in Ibara GRA. Daddy knows people.' },
+    lapo: { label: 'LAPO', emoji: '😬', desc: '₦60,000 microfinance loan in your pocket. Repay ₦12,000 every Saturday for 6 weeks… or the loan officers come knocking.' },
+    village: { label: 'VILLAGE', emoji: '🚌', desc: 'You just arrived from the village with ₦50,000, a Tecno phone and a dream.' },
+  };
+
   function newHustleGame(opts = {}) {
     const village = E.TOWN[opts.village] ? opts.village : 'ogbere';
     const s = E.newGame({ seed: opts.seed, first: opts.first, last: opts.last, gender: opts.gender, town: village, wealth: 'poor' });
@@ -79,12 +86,123 @@
       clout: 3, followers: 40, house: 'selfcon', owed: 0, missed: 0, lockedOut: false,
       adire: 0, adireCost: 0, impound: 0, lastEarn: null, adDay: null, drip: [], level: 1,
       houseBuilt: false, festivals: {}, totalEarned: 0,
+      start: STARTS[opts.start] ? opts.start : 'village',
+      bank: { loan: 0, weekly: 0, savings: 0 },
+      inbox: [],
     };
     s.log = [];
-    E.log(s, `🚌 You arrived in Abeokuta from ${E.TOWN[village].name} with ${naira(START_CASH)}, a Tecno phone and a dream. Your goal: become the biggest name in Ogun State.`, 'milestone');
-    E.log(s, `You rented a ${HOUSES.selfcon.name} — ${naira(HOUSES.selfcon.weekly)} every Saturday, or the landlord locks your door.`, 'info');
-    E.log(s, 'Pick a hustle: sell adire, ride okada, or become an influencer. From sapa to stardom!', 'info');
+    const start = s.hustle.start;
+    if (start === 'nepo') {
+      s.money = 500000;
+      s.hustle.clout = 25; s.hustle.followers = 1200;
+      s.hustle.house = 'duplex';
+      s.edu.highest = 'BSc'; s.edu.fields = ['finance'];
+      s.edu.history.push({ name: 'Covenant University, Ota', qualification: 'BSc Accounting', grade: 'Second Class Upper (3.80)', year: s.year - 1, level: 'BSc', field: 'finance', cgpa: 3.8, instId: 'covenant', courseId: 'accounting' });
+      s.nysc = { status: 'done', state: 'Lagos' };
+      s.assets.push({ uid: 'a' + s.nextId++, id: 'car-corolla', value: 11000000, boughtYear: s.year });
+      E.hire(s, 'banker');
+      s.job.level = 2; s.job.title = E.JOB.banker.levels[2]; s.job.salary = 650000; s.job.employer = 'Gateway Bank, Kuto';
+      s.log = [];
+      E.log(s, `🤑 NEPO BABY! Your uncle "arranged" a ${s.job.title} job at ${s.job.employer}. You have ${naira(s.money)}, a Corolla and a duplex in Ibara GRA.`, 'milestone');
+      message(s, 'Uncle Wale', 'I have spoken to the MD. Resume Monday. Don\'t disgrace the family name!');
+    } else if (start === 'lapo') {
+      s.money = 60000;
+      s.hustle.bank = { loan: 72000, weekly: 12000, savings: 0 };
+      E.log(s, `😬 LAPO START: you took a ${naira(60000)} microfinance loan. Repay ${naira(12000)} every Saturday (₦72,000 total).`, 'milestone');
+      message(s, 'Microfinance Bank', 'Welcome! Your loan of ₦60,000 is disbursed. Weekly repayment: ₦12,000 every Saturday. Thank you for banking with us.');
+    } else {
+      E.log(s, `🚌 You arrived in Abeokuta from ${E.TOWN[village].name} with ${naira(START_CASH)}, a Tecno phone and a dream. Your goal: become the biggest name in Ogun State.`, 'milestone');
+    }
+    if (start !== 'nepo') E.log(s, `You rented a ${HOUSES.selfcon.name} — ${naira(HOUSES.selfcon.weekly)} every Saturday, or the landlord locks your door.`, 'info');
+    E.log(s, 'Open your 📱 Phone: find work in Jobs, food in ChopNow, rides in GoRide. From sapa to stardom!', 'info');
+    message(s, start === 'nepo' ? 'Mummy' : 'Mama', start === 'nepo' ? 'My darling, drive carefully o. Call me when you get to the office.' : 'Hope you reached Abeokuta safely. Remember where you are coming from. God be with you.');
+    message(s, 'Landlord', start === 'nepo' ? 'Welcome to Ibara GRA. Rent is due every Saturday. No loud music after 10pm.' : `Welcome. Rent is ${naira(HOUSES.selfcon.weekly)} every Saturday. If you owe 2 weeks I will lock the door.`);
     return s;
+  }
+
+  // ---------- phone: messages ----------
+
+  function message(s, from, text) {
+    if (!s.hustle) return;
+    s.hustle.inbox = s.hustle.inbox || [];
+    s.hustle.inbox.push({ from, text, day: dayKey(s), time: s.clock ? s.clock.min : 0, read: false });
+    if (s.hustle.inbox.length > 200) s.hustle.inbox.splice(0, s.hustle.inbox.length - 200);
+  }
+  function unread(s) { return s.hustle && s.hustle.inbox ? s.hustle.inbox.filter((m) => !m.read).length : 0; }
+  function markRead(s, from) { for (const m of (s.hustle.inbox || [])) if (!from || m.from === from) m.read = true; }
+
+  // ---------- phone: bank ----------
+
+  function bank(s) { s.hustle.bank = s.hustle.bank || { loan: 0, weekly: 0, savings: 0 }; return s.hustle.bank; }
+  function loanLimit(s) { return levelInfo(s).level * 60000; }
+  function takeLoan(s, amount) {
+    const b = bank(s);
+    if (b.loan > 0) return { ok: false, msg: 'Repay your current loan first.' };
+    if (amount > loanLimit(s)) return { ok: false, msg: `Your limit is ${naira(loanLimit(s))}. Level up to borrow more.` };
+    b.loan = round1k(amount * 1.2); b.weekly = round1k(b.loan / 6);
+    s.money += amount;
+    message(s, 'Microfinance Bank', `Loan of ${naira(amount)} disbursed. Repay ${naira(b.weekly)} every Saturday (total ${naira(b.loan)}).`);
+    E.log(s, `🏦 You took a ${naira(amount)} loan. ${naira(b.weekly)} weekly repayments.`, 'money');
+    return { ok: true, msg: 'Loan approved!' };
+  }
+  function repayLoan(s, amount) {
+    const b = bank(s);
+    const pay = Math.min(amount, b.loan, Math.max(0, s.money));
+    if (pay <= 0) return { ok: false, msg: b.loan ? 'You have no money to repay with.' : 'You have no loan.' };
+    s.money -= pay; b.loan -= pay;
+    if (b.loan <= 0) { b.loan = 0; b.weekly = 0; message(s, 'Microfinance Bank', 'Congratulations! Your loan is fully repaid.'); }
+    return { ok: true, msg: `Repaid ${naira(pay)}.` };
+  }
+  function deposit(s, amount) {
+    const a = Math.min(amount, Math.max(0, s.money));
+    if (a <= 0) return { ok: false, msg: 'Nothing to save.' };
+    s.money -= a; bank(s).savings += a;
+    return { ok: true, msg: `Saved ${naira(a)}. Savings earn 1% weekly interest.` };
+  }
+  function withdraw(s, amount) {
+    const b = bank(s); const a = Math.min(amount, b.savings);
+    if (a <= 0) return { ok: false, msg: 'No savings.' };
+    b.savings -= a; s.money += a;
+    return { ok: true, msg: `Withdrew ${naira(a)}.` };
+  }
+
+  // ---------- phone: GoRide & betting & friends ----------
+
+  function rideFare(meters) { return Math.max(800, Math.round((500 + meters * 18) / 100) * 100); }
+  function ride(s, meters, placeName) {
+    const fare = rideFare(meters);
+    if (s.money < fare) return { ok: false, msg: `The ride costs ${naira(fare)}. Trek, or hustle first.` };
+    if (s.events.length) return { ok: false, msg: 'Respond to the event first.' };
+    s.money -= fare;
+    L.passTime(s, Math.max(10, Math.round(meters / 250 * 60 / 10)));
+    return { ok: true, msg: `🚕 GoRide dropped you at ${placeName} (${naira(fare)}).` };
+  }
+
+  function placeBet(s, stake, odds) {
+    if (s.age < 18) return { ok: false, msg: 'You must be 18 to bet.' };
+    if (s.money < stake) return { ok: false, msg: `You need ${naira(stake)}.` };
+    if (!E._h.oncePerDay(s, 'bet-' + odds)) return { ok: false, msg: 'One ticket per odds per day. Bet responsibly!' };
+    s.money -= stake;
+    if (chance(s, 0.88 / odds)) {
+      const win = round1k(stake * odds);
+      s.money += win; need(s, 'fun', 25); addClout(s, 1);
+      E.log(s, `🎰 Your ${odds}-odds ticket CAME! You won ${naira(win)}.`, 'money');
+      return { ok: true, msg: `🎉 Ticket cut? NO! You won ${naira(win)}!` };
+    }
+    need(s, 'fun', -8); stat(s, 'happiness', -2);
+    return { ok: false, msg: pick(s, ['One game cut your ticket. Chai!', 'Arsenal drew in the 94th minute. Ticket cut.', 'You lost. "Next time" na im dem dey talk.']) };
+  }
+
+  function befriend(s, name, gender) {
+    if (s.relations.some((r) => r.role === 'friend' && `${r.first}` === name)) return { ok: false, msg: `${name} is already your friend.` };
+    if (!E._h.oncePerDay(s, 'befriend-' + name)) return { ok: false, msg: 'Give it some time.' };
+    need(s, 'social', 15);
+    if (!chance(s, 0.45 + s.hustle.clout / 200 + s.stats.looks / 400)) return { ok: false, msg: `${name} wasn't in the mood to talk.` };
+    const p = E._h.newPerson(s, 'friend', gender || pick(s, ['male', 'female']), clamp(s.age + randInt(s, -4, 6), 16, 70), { closeness: 40, town: 'abeokuta' });
+    p.first = name;
+    s.relations.push(p);
+    message(s, name, pick(s, ['Nice meeting you! Save my number 😄', 'Guy/babe, we go dey talk o.', 'Let\'s hang out at Panseke sometime!']));
+    return { ok: true, msg: `🤝 You and ${name} are now friends.` };
   }
   function randIntSafe(s, a, b) { return randInt(s, a, b); }
 
@@ -379,26 +497,48 @@
     if (h.impound > 0) h.impound--;
     if (inSapa(s)) stat(s, 'happiness', -1);
 
-    // Saturday: rent day, brand deals, owambe.
+    // Saturday: rent day, brand deals, owambe, loan repayments.
     if (s.clock.dow === 5) {
+      const b = bank(s);
+      if (b.savings > 0) b.savings = Math.round(b.savings * 1.01);
+      if (b.loan > 0) {
+        const due = Math.min(b.weekly, b.loan);
+        if (s.money >= due) {
+          s.money -= due; b.loan -= due;
+          message(s, 'Microfinance Bank', `Repayment of ${naira(due)} received. Balance: ${naira(b.loan)}.`);
+          if (b.loan <= 0) { b.loan = 0; b.weekly = 0; message(s, 'Microfinance Bank', 'Your loan is fully repaid. You can borrow again!'); }
+        } else {
+          b.loan = round1k(b.loan * 1.1); addClout(s, -2); stat(s, 'happiness', -6);
+          message(s, 'Microfinance Bank', `You missed your ${naira(due)} repayment. 10% penalty added. Our officers will visit your area.`);
+          E.log(s, '🏦 Loan officers came to your area asking for you. Everybody saw. Shame!', 'bad');
+        }
+      }
       const rent = weeklyRent(s);
       if (rent) {
         if (s.money >= rent + h.owed) {
           s.money -= rent + h.owed;
           E.log(s, `🏠 Paid ${naira(rent + h.owed)} rent for your ${HOUSES[h.house].name}.`, 'money');
+          message(s, 'Landlord', `Received ${naira(rent + h.owed)}. Thank you.`);
           h.owed = 0; h.missed = 0;
         } else {
           h.owed += rent; h.missed++;
-          if (h.missed === 1) E.log(s, `🔐 Landlord: "Pay your ${naira(h.owed)} by next Saturday or I go lock your door!"`, 'bad');
-          else if (!h.lockedOut) { h.lockedOut = true; addClout(s, -3); E.log(s, `🔒 LOCKED OUT! You owe ${naira(h.owed)}. Pay the arrears (Home tab) to get back in.`, 'bad'); }
+          if (h.missed === 1) { E.log(s, `🔐 Landlord: "Pay your ${naira(h.owed)} by next Saturday or I go lock your door!"`, 'bad'); message(s, 'Landlord', `Where is my rent? You owe ${naira(h.owed)}. Next Saturday I lock the door.`); }
+          else if (!h.lockedOut) { h.lockedOut = true; addClout(s, -3); E.log(s, `🔒 LOCKED OUT! You owe ${naira(h.owed)}. Pay the arrears in 📱 Phone → Houses.`, 'bad'); message(s, 'Landlord', 'I have locked your door. Bring my money.'); }
         }
       }
       if (h.followers >= 1000 && E.hasAssetKind(s, 'phone')) {
         const deal = brandDeal(s);
         earn(s, deal, 'deal');
         E.log(s, `📸 Brand deal: a business paid you ${naira(deal)} to promote them to your ${h.followers.toLocaleString('en-US')} followers.`, 'money');
+        message(s, 'Brand Deals', `Payment of ${naira(deal)} sent for this week's promo post. Keep the content coming! 🔥`);
       }
       E.queueEvent(s, 'owambe-sat');
+    }
+    // Friends gist in the group chat now and then.
+    if (chance(s, 0.25)) {
+      const friends = s.relations.filter((r) => r.alive && r.role === 'friend');
+      const who = friends.length ? pick(s, friends).first : pick(s, ['Tunde (Area)', 'Bisi (Kuto)', 'Emeka (POS)']);
+      message(s, who, pick(s, ['Owambe dey this Saturday o, you dey come?', 'NEPA don take light for our area again 😩', 'Bro abeg borrow me 2k till Friday', 'Adire price don go up for Itoku', 'TRACE dey Kuto junction now, take another road!', 'Who wan watch Arsenal match for viewing centre?', 'Mama put for Panseke get new ofada, e sweet die!']));
     }
     // Sunday: family calls from the village.
     if (s.clock.dow === 6 && chance(s, 0.6) && s.relations.some((r) => r.alive && ['mother', 'father'].includes(r.role))) E.queueEvent(s, 'family-call');
@@ -413,6 +553,7 @@
     if (lv > h.level) {
       h.level = lv;
       E.log(s, `⭐ LEVEL UP! You are now level ${lv}: ${levelInfo(s).title}.`, 'milestone');
+      message(s, 'OGS Lifestyle', `⭐ Level ${lv}: ${levelInfo(s).title}. Your loan limit is now ${naira(loanLimit(s))}.`);
       for (const z of ZONES) if (z.unlock === lv) E.log(s, `🗺️ ${z.name} (${z.theme}) is now unlocked!`, 'milestone');
     }
   });
@@ -542,7 +683,8 @@
   });
 
   return {
-    START_CASH, ZONES, ZONE_OF, HOUSES, DRIP, LEVELS,
+    START_CASH, ZONES, ZONE_OF, HOUSES, DRIP, LEVELS, STARTS,
+    message, unread, markRead, bank, loanLimit, takeLoan, repayLoan, deposit, withdraw, rideFare, ride, placeBet, befriend,
     isHustle, newHustleGame, adirePrices, weeklyRent, sapa, inSapa, levelInfo, zoneUnlocked, score,
     canDouble, doubleLast, buyDrip, moveHouse, buyHouse, payArrears, buildHouse, buyAsset, dayKey,
   };

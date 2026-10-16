@@ -20,9 +20,9 @@
   const { rand, randInt, chance, pick, clamp, stat, round1k, oncePerDay } = E._h;
   const naira = E.naira;
   const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const NEEDS = ['hunger', 'energy', 'hygiene', 'fun', 'social'];
+  const NEEDS = ['hunger', 'energy', 'hygiene', 'fun', 'social', 'bladder'];
   // Needs lost per waking hour.
-  const DECAY = { hunger: 4.5, energy: 4.2, hygiene: 2.5, fun: 2.2, social: 1.6 };
+  const DECAY = { hunger: 4.5, energy: 4.2, hygiene: 2.5, fun: 2.2, social: 1.6, bladder: 4 };
   const WAKE = 6 * 60;
 
   const need = (s, k, d) => { s.needs[k] = clamp(s.needs[k] + d); };
@@ -50,6 +50,7 @@
 
   function passTime(s, minutes, asleep = false) {
     let left = minutes;
+    if (s.needs.bladder == null) s.needs.bladder = 90; // older saves
     while (left > 0 && s.alive && !s.ended) {
       const step = Math.min(60, left);
       left -= step;
@@ -57,9 +58,14 @@
       if (asleep) {
         need(s, 'hunger', -1.5 * f);
         need(s, 'hygiene', -1 * f);
+        need(s, 'bladder', -1 * f);
         need(s, 'energy', 13 * f);
       } else {
         for (const k of NEEDS) need(s, k, -DECAY[k] * f);
+        if (s.needs.bladder <= 0) { // couldn't hold it
+          s.needs.bladder = 100; need(s, 'hygiene', -50); need(s, 'social', -15); stat(s, 'happiness', -6);
+          E.log(s, 'You could not hold it any longer… Embarrassing! Find a toilet next time.', 'bad');
+        }
       }
       // Starving or exhausted hurts.
       s.clock.dmg = (s.clock.dmg || 0) + (s.needs.hunger <= 0 ? 0.3 * f : 0);
@@ -160,6 +166,17 @@
     { id: 'street-food', group: 'Food & rest', icon: '🥖', name: 'Bread & akara by the roadside', hours: 0.5, cost: 1500, minAge: 6, run: (s) => { need(s, 'hunger', 35); return 'Hot akara and agege bread. Simple and sweet.'; } },
     { id: 'buka', group: 'Food & rest', icon: '🍛', name: 'Amala & ewedu at a buka', hours: 1, cost: 4000, minAge: 8, run: (s) => { need(s, 'hunger', 55); need(s, 'social', 6); need(s, 'fun', 4); return 'Amala, ewedu, gbegiri and assorted meat. Heaven.'; } },
     { id: 'restaurant', group: 'Food & rest', icon: '🍽️', name: 'Eat out at a restaurant', hours: 1.5, cost: 15000, minAge: 12, run: (s) => { need(s, 'hunger', 70); need(s, 'fun', 12); need(s, 'social', 8); return 'You ate at a nice restaurant and took pictures for the gram.'; } },
+    { id: 'toilet', group: 'Food & rest', icon: '🚽', name: 'Use the toilet', hours: 0.25, cost: 0, anywhere: true,
+      can: (s) => (s.hustle && s.hustle.lockedOut ? 'Locked out — use a public toilet' : s.jail ? null : null),
+      run: (s) => { s.needs.bladder = 100; return 'Ahh, relief.'; } },
+    { id: 'public-toilet', group: 'Food & rest', icon: '🚻', name: 'Public toilet', hours: 0.25, cost: 100, minAge: 6, hidden: (s) => !s.hustle,
+      run: (s) => { s.needs.bladder = 100; need(s, 'hygiene', -5); return 'You paid ₦100 at the public toilet. The smell… but relief.'; } },
+    { id: 'order-food', group: 'Food & rest', icon: '🛵', name: 'Order food delivery (ChopNow)', hours: 0.75, cost: 4500, minAge: 14,
+      can: (s) => (!s.assets.some((a) => E.ASSET[a.id] && E.ASSET[a.id].kind === 'phone') ? 'You need a phone' : null),
+      run: (s) => { need(s, 'hunger', 65); need(s, 'fun', 5); return pick(s, ['The rider delivered jollof and chicken. Still hot!', 'Amala combo delivered. The rider called you 6 times.', 'Shawarma and Chapman delivered. Soft life!']); } },
+    { id: 'order-feast', group: 'Food & rest', icon: '🍗', name: 'Order a big meal (ChopNow)', hours: 1, cost: 12000, minAge: 14,
+      can: (s) => (!s.assets.some((a) => E.ASSET[a.id] && E.ASSET[a.id].kind === 'phone') ? 'You need a phone' : null),
+      run: (s) => { need(s, 'hunger', 90); need(s, 'fun', 15); return 'Small chops platter, peppered goat meat and asun. You ate like a chairman.'; } },
     { id: 'beg-food', group: 'Food & rest', icon: '🙏', name: 'Ask a friend for food', hours: 1, cost: 0, minAge: 6,
       can: (s) => (s.money >= 1500 ? 'You can afford food' : (s.dayActs.begged || 0) >= 2 ? 'Your friends are tired of you today' : null),
       run: (s) => { s.dayActs.begged = (s.dayActs.begged || 0) + 1; need(s, 'hunger', 40); need(s, 'social', -5); stat(s, 'happiness', -3); return pick(s, ['Your friend shared their eba with you. Humbling.', 'A neighbour gave you leftover rice. Sapa is real.', 'You stood near a buka until the woman took pity on you.']); } },
@@ -310,6 +327,7 @@
       for (const id of ['home-food', 'cook', 'street-food', 'lafun', 'beg-food']) if (ok(id)) return id;
     }
     if (s.needs.hygiene < 40 && ok('shower')) return 'shower';
+    if (s.needs.bladder != null && s.needs.bladder < 55) for (const id of ['toilet', 'public-toilet']) if (ok(id)) return id;
     if (ok('school')) return 'school';
     if (ok('work')) return 'work';
     for (const fn of AUTO_HOOKS) { const id = fn(s, ok, h); if (id) return id; }

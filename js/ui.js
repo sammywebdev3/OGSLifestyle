@@ -135,8 +135,10 @@
         + meter('❤️ Health', st.health) + meter('😊 Happiness', st.happiness) + meter('🧠 Smarts', st.smarts) + meter('✨ Looks', st.looks));
     }
     renderClock();
+    applyGameShell();
     renderPanel(tab);
     if (tab === 'world') renderWorldHud();
+    renderGameHud();
     if (mapReady && lastMapTown !== S.town) { M.updatePlayer(S); lastMapTown = S.town; }
     updateOverlays();
   }
@@ -238,7 +240,7 @@
     ads: () => (ST.adsRemoved() ? [] : AB.active()),
     near: (p) => { worldNear = p; if (!p) worldSheet = null; renderWorldHud(); },
     enter: () => { if (worldNear && !modalOpen()) { worldSheet = worldNear; renderWorldHud(); } },
-    blocked: () => modalOpen() || !!worldSheet || !!(S && S.events.length),
+    blocked: () => modalOpen() || !!worldSheet || phone.open || !!(S && S.events.length),
   };
 
   function renderWorldHud() {
@@ -250,7 +252,8 @@
     if (worldNear) prompt.textContent = `🚪 ${worldNear.name}`;
     const sheet = $('#world-sheet');
     sheet.hidden = !worldSheet;
-    if (worldSheet) setHTML(sheet, placeSheet(worldSheet));
+    if (worldSheet && worldSheet.id === '__people') showPeopleNearby();
+    else if (worldSheet) setHTML(sheet, placeSheet(worldSheet));
   }
 
   function placeSheet(p) {
@@ -272,7 +275,7 @@
   let w3d = null; // the 3D module, loaded on demand
 
   function load3D() {
-    if (!w3d) w3d = import(new URL('js/world3d.js', document.baseURI).href);
+    if (!w3d) w3d = import(new URL('js/world3d.js', document.baseURI).href).then((m) => { window.__ogs3d = m; return m; });
     return w3d;
   }
 
@@ -308,6 +311,221 @@
     viewMode = mode;
     try { localStorage.setItem('ogs-view', mode); } catch (e) { /* ignore */ }
     openWorld();
+  }
+
+  // ===================== Game screen: HUD + Phone (Hustle Mode) =====================
+
+  const phone = { open: false, app: null, thread: null };
+  let classicView = false;
+
+  const APPS = [
+    { id: 'jobs', icon: '💼', name: 'Jobs', ac: '#2c3e50' },
+    { id: 'bank', icon: '🏦', name: 'Bank', ac: '#0b6e4f' },
+    { id: 'messages', icon: '💬', name: 'Messages', ac: '#25a35a' },
+    { id: 'chopnow', icon: '🍔', name: 'ChopNow', ac: '#e67e22' },
+    { id: 'goride', icon: '🚕', name: 'GoRide', ac: '#f1c40f' },
+    { id: 'houses', icon: '🏠', name: 'Houses', ac: '#8e5a2b' },
+    { id: 'cars', icon: '🚗', name: 'Cars', ac: '#c0392b' },
+    { id: 'shop', icon: '🛍️', name: 'Shop', ac: '#8e44ad' },
+    { id: 'social', icon: '📸', name: 'SocialGram', ac: '#d6249f' },
+    { id: 'contacts', icon: '👥', name: 'Contacts', ac: '#2980b9' },
+    { id: 'bet', icon: '🎰', name: 'SureOdds', ac: '#16a085' },
+    { id: 'street', icon: '🦹', name: 'Street', ac: '#34495e' },
+    { id: 'me', icon: '📊', name: 'Me', ac: '#23408e' },
+    { id: 'news', icon: '📰', name: 'My Story', ac: '#7f8c8d' },
+    { id: 'store', icon: '💎', name: 'Store', ac: '#6c3483' },
+    { id: 'settings', icon: '⚙️', name: 'Settings', ac: '#555' },
+  ];
+  const NEED_ICONS = [['hunger', '🍲'], ['energy', '⚡'], ['hygiene', '🚿'], ['bladder', '🚽'], ['fun', '🎮'], ['social', '💬']];
+
+  function inGame() { return isH() && !classicView; }
+
+  function applyGameShell() {
+    const g = inGame();
+    document.body.classList.toggle('game', g);
+    $('#hud').hidden = !g;
+    $('#back-to-game').hidden = !(isH() && classicView);
+    if (!g && phone.open) closePhone();
+  }
+
+  function renderGameHud() {
+    if (!S || !inGame()) return;
+    const lv = HU.levelInfo(S);
+    $('#hud-avatar').textContent = S.gender === 'female' ? '🙋🏾‍♀️' : '🙋🏾‍♂️';
+    $('#hud-name').textContent = S.first;
+    $('#hud-level').textContent = `⭐ ${lv.level} · ${lv.title}`;
+    const cash = $('#hud-cash');
+    cash.textContent = naira(S.money);
+    cash.classList.toggle('low', HU.inSapa(S));
+    $('#hud-clock').textContent = L.timeLabel(S);
+    $('#hud-day').textContent = `${L.DOW[S.clock.dow]} · Day ${S.clock.day}`;
+    $('#hud-play').textContent = clock.running ? '⏸' : '▶';
+    $('#hud-play').classList.toggle('on', clock.running);
+    $('#hud-speed').textContent = clock.speed + '×';
+    setHTML($('#hud-needs'), NEED_ICONS.map(([k, ic]) => {
+      const v = Math.round(S.needs[k] ?? 100);
+      const c = v >= 60 ? '#2ecc71' : v >= 30 ? '#f1c40f' : '#e74c3c';
+      return `<div class="need ${v < 20 ? 'warn' : ''}" style="--v:${v};--c:${c}" title="${k} ${v}%"><span>${ic}</span></div>`;
+    }).join(''));
+    // Context buttons: the things you most likely want right now.
+    const acts = Object.fromEntries(L.listActions(S).map((a) => [a.id, a]));
+    const ok = (id) => acts[id] && !acts[id].why;
+    const btns = [];
+    if (ok('work')) btns.push(`<button class="hud-action work" data-act="do" data-id="work">💼 Go to work</button>`);
+    const focus = { okada: 'okada-ride', adire: S.hustle.adire > 0 ? 'adire-local' : 'adire-buy', influencer: 'content-skit' }[S.hustle.focus];
+    if (focus && ok(focus)) btns.push(`<button class="hud-action" data-act="do" data-id="${focus}">${acts[focus].icon} ${h(acts[focus].name.replace(/\(.*\)/, '').trim())}</button>`);
+    else if (!S.hustle.focus && !S.job) btns.push('<button class="hud-action" data-ui="app" data-app="jobs">🔥 Find a hustle</button>');
+    if (S.needs.bladder < 35 && (ok('toilet') || ok('public-toilet'))) btns.push(`<button class="hud-action" data-act="do" data-id="${ok('toilet') ? 'toilet' : 'public-toilet'}">🚽 Toilet</button>`);
+    if (S.needs.hunger < 35 && ok('order-food')) btns.push('<button class="hud-action" data-act="do" data-id="order-food">🛵 Order food</button>');
+    if (S.needs.energy < 25 || L.hour(S) >= 22) { if (ok('sleep')) btns.push('<button class="hud-action" data-act="do" data-id="sleep">🛏️ Sleep</button>'); else if (ok('nap')) btns.push('<button class="hud-action" data-act="do" data-id="nap">😪 Nap</button>'); }
+    setHTML($('#hud-actions'), btns.slice(0, 3).join(''));
+    const n = HU.unread(S);
+    for (const id of ['#phone-badge', '#msg-badge']) { const b = $(id); b.hidden = !n; b.textContent = n; }
+    if (phone.open) renderPhone();
+  }
+
+  function openPhone(app = null) {
+    phone.open = true; phone.app = app; phone.thread = null;
+    if (worldSheet) { worldSheet = null; $('#world-sheet').hidden = true; }
+    $('#phone').hidden = false;
+    renderPhone();
+  }
+  function closePhone() { phone.open = false; $('#phone').hidden = true; }
+
+  function phoneHead(title, ac) {
+    return `<div class="ph-head" style="--ac:${ac}"><button data-ui="ph-back">◀</button><h2>${title}</h2></div>`;
+  }
+
+  function renderPhone() {
+    if (!S || !phone.open) return;
+    $('#ph-time').textContent = L.timeLabel(S);
+    const scr = $('#phone-screen');
+    scr.classList.toggle('ph-home', !phone.app);
+    if (!phone.app) {
+      const lv = HU.levelInfo(S);
+      const n = HU.unread(S);
+      setHTML(scr, `<div class="ph-greet"><b>${L.timeLabel(S)}</b><span>${L.DOW[S.clock.dow]}, Day ${S.clock.day} · ${S.year} · ⭐ ${h(lv.title)}</span></div>
+        <div class="ph-grid">${APPS.map((a) => `<button class="ph-app" data-ui="app" data-app="${a.id}"><i style="--ac:${a.ac}">${a.icon}</i>${h(a.name)}${a.id === 'messages' && n ? `<span class="badge">${n}</span>` : ''}</button>`).join('')}</div>`);
+      return;
+    }
+    const app = APPS.find((a) => a.id === phone.app) || APPS[0];
+    setHTML(scr, phoneHead(`${app.icon} ${h(app.name)}`, app.ac) + (APP_VIEWS[app.id] || (() => ''))());
+  }
+
+  const listActs = (ids) => { const all = Object.fromEntries(L.listActions(S).map((a) => [a.id, a])); return actionButtons(ids.map((i) => all[i]).filter(Boolean)); };
+
+  const APP_VIEWS = {
+    jobs() {
+      const why = HU.canDouble(S);
+      let html = '';
+      if (S.job) html += `<div class="ph-card"><b>${h(S.job.title)}</b><br><span class="small muted">${h(S.job.employer)} · ${naira(S.job.salary)}/month · ${naira(L.dailyPay(S))} per day you show up</span><div class="acts" style="margin-top:8px">${listActs(['work', 'overtime'])}</div></div>`;
+      html += `<h2>🔥 Hustles</h2><div class="acts">${listActs(['adire-buy', 'adire-local', 'adire-lagos', 'okada-ride', 'content-olumo', 'content-skit', 'content-adire', 'hustle'])}</div>
+        <div class="ph-row"><button class="small" data-act="watch-ad" ${why ? `disabled title="${h(why)}"` : ''}>📺 Watch ad: double today's hustle</button></div>
+        <p class="small muted">Adire today: buy ${naira(HU.adirePrices(S).buy)} · Kuto ${naira(HU.adirePrices(S).local)} · Lagos ${naira(HU.adirePrices(S).lagos)} · stock ${S.hustle.adire}</p>`;
+      return html + renderCareer();
+    },
+    bank() {
+      const b = HU.bank(S);
+      const lim = HU.loanLimit(S);
+      const tx = S.log.filter((l) => l.kind === 'money').slice(-15).reverse();
+      return `<div class="ph-card"><span class="small muted">Account balance</span><div class="ph-big">${naira(S.money)}</div>
+          <span class="small muted">Savings: <b>${naira(b.savings)}</b> (1% weekly interest)</span>
+          <div class="ph-row"><button class="small" data-ui="bank" data-op="deposit" data-amt="10000">Save ₦10k</button><button class="small" data-ui="bank" data-op="deposit" data-amt="50000">Save ₦50k</button><button class="small secondary" data-ui="bank" data-op="withdraw" data-amt="999999999">Withdraw all</button></div></div>
+        <div class="ph-card"><b>Loan</b><br>${b.loan ? `<span class="req">You owe ${naira(b.loan)} · ${naira(b.weekly)} due every Saturday</span>
+          <div class="ph-row"><button class="small" data-ui="bank" data-op="repay" data-amt="${b.weekly}">Repay ${naira(b.weekly)}</button><button class="small secondary" data-ui="bank" data-op="repay" data-amt="${b.loan}">Repay all</button></div>`
+          : `<span class="small muted">Borrow up to ${naira(lim)} (20% interest, 6 weekly repayments). Your limit grows with your level.</span>
+          <div class="ph-row">${[0.25, 0.5, 1].map((f) => `<button class="small" data-ui="bank" data-op="loan" data-amt="${Math.round(lim * f / 1000) * 1000}">Borrow ${naira(Math.round(lim * f / 1000) * 1000)}</button>`).join('')}</div>`}</div>
+        <h2>Transactions</h2>${tx.length ? tx.map((l) => `<div class="log-item money">${h(l.text)}</div>`).join('') : '<p class="muted">No transactions yet.</p>'}`;
+    },
+    messages() {
+      const inbox = S.hustle.inbox || [];
+      if (phone.thread) {
+        HU.markRead(S, phone.thread);
+        const msgs = inbox.filter((m) => m.from === phone.thread);
+        return `<p><button class="small secondary" data-ui="ph-thread" data-from="">← All chats</button></p><h2>${h(phone.thread)}</h2>
+          <div class="chat">${msgs.map((m) => `<div class="bubble">${h(m.text)}<small>Day ${m.day % E.DAYS_PER_YEAR || E.DAYS_PER_YEAR} · ${String(Math.floor(m.time / 60) % 24).padStart(2, '0')}:${String(Math.floor(m.time % 60)).padStart(2, '0')}</small></div>`).join('')}</div>`;
+      }
+      const threads = [];
+      for (let i = inbox.length - 1; i >= 0; i--) { const m = inbox[i]; if (!threads.some((t) => t.from === m.from)) threads.push({ from: m.from, last: m, unread: inbox.filter((x) => x.from === m.from && !x.read).length }); }
+      return threads.length ? `<div class="ph-list">${threads.map((t) => `<button class="ph-item" data-ui="ph-thread" data-from="${h(t.from)}"><span><b>${h(t.from)}</b><small>${h(t.last.text.slice(0, 60))}${t.last.text.length > 60 ? '…' : ''}</small></span>${t.unread ? `<span class="badge" style="position:static">${t.unread}</span>` : ''}</button>`).join('')}</div>` : '<p class="muted">No messages yet.</p>';
+    },
+    chopnow() {
+      return `<p class="small muted">Food delivered wherever you are. Hunger: ${Math.round(S.needs.hunger)}%</p><div class="acts">${listActs(['order-food', 'order-feast', 'street-food', 'lafun', 'ikokore', 'ofada', 'buka', 'cook', 'beg-food'])}</div>`;
+    },
+    goride() {
+      const here = window.__ogs3d;
+      const places = here ? here.placesList() : [];
+      if (!places.length) return '<p class="muted">Open the 3D town to use GoRide.</p>';
+      return `<p class="small muted">Book a ride to anywhere in Abeokuta. Faster than trekking!</p><div class="ph-list">${places.map((p) => {
+        const def = WO.PLACES.find((x) => x.id === p.id);
+        const dist = here.distanceTo(p.id);
+        const fare = HU.rideFare(dist);
+        return `<button class="ph-item" data-ui="ride" data-id="${p.id}" ${dist < 6 ? 'disabled' : ''}><span><b>${h(def ? def.name : p.id)}</b><small>${h(p.road)} · ${Math.round(dist)} m away</small></span><b>${dist < 6 ? 'Here' : naira(fare)}</b></button>`;
+      }).join('')}</div>`;
+    },
+    houses() { return renderHustleHome(); },
+    cars() {
+      const kinds = ['motorbike', 'keke', 'car'];
+      const own = S.assets.filter((a) => kinds.includes(E.ASSET[a.id].kind));
+      return `${own.length ? '<h2>Your garage</h2><div class="ph-card">' + own.map((a) => `<div class="prog"><span><b>${h(E.ASSET[a.id].name)}</b><br><span class="small muted">Worth ${naira(a.value)}</span></span><button class="small secondary" data-act="sell" data-uid="${a.uid}">Sell</button></div>`).join('') + '</div>' : ''}
+        <h2>Dealership</h2>${D.ASSETS.filter((a) => kinds.includes(a.kind)).map((a) => `<div class="ph-card"><b>${h(a.name)}</b><br><span class="ph-big" style="font-size:20px">${naira(a.price)}</span>${a.clout ? `<span class="small muted"> · clout +${a.clout}</span>` : ''}<div class="ph-row"><button class="small" data-act="buy" data-id="${a.id}" ${S.money < a.price ? 'disabled' : ''}>Buy</button></div></div>`).join('')}`;
+    },
+    shop() {
+      const hu = S.hustle;
+      return `<h2>👔 Drip</h2>${HU.DRIP.map((d) => `<div class="ph-card"><b>${h(d.name)}</b> <span class="small muted">· clout +${d.clout}</span><div class="ph-row"><b>${naira(d.price)}</b>${hu.drip.includes(d.id) ? '<span class="pill ok">Owned</span>' : `<button class="small" data-act="drip" data-id="${d.id}" ${S.money < d.price ? 'disabled' : ''}>Buy</button>`}</div></div>`).join('')}
+        <h2>📱 Gadgets & property</h2>${D.ASSETS.filter((a) => ['phone', 'generator', 'land', 'house'].includes(a.kind)).map((a) => `<div class="ph-card"><b>${h(a.name)}</b><div class="ph-row"><b>${naira(a.price)}</b><button class="small" data-act="buy" data-id="${a.id}" ${S.money < a.price ? 'disabled' : ''}>Buy</button></div></div>`).join('')}`;
+    },
+    social() {
+      const hu = S.hustle;
+      return `<div class="ph-card" style="text-align:center"><div class="ph-big">${hu.followers.toLocaleString('en-US')}</div><span class="small muted">followers · clout ${Math.round(hu.clout)}</span>
+        <p class="small">${hu.followers >= 1000 ? '💰 Brand deals pay you every Saturday.' : `Reach 1,000 followers to unlock weekly brand deals (${(1000 - hu.followers).toLocaleString('en-US')} to go).`}</p></div>
+        <div class="acts">${listActs(['content-olumo', 'content-skit', 'content-adire', 'phone'])}</div>`;
+    },
+    contacts() { return renderPeople(); },
+    bet() {
+      const tickets = [[2, 1000], [2, 5000], [5, 2000], [5, 10000], [20, 1000], [20, 5000]];
+      return `<div class="ph-card"><b>⚽ Today's matches</b><p class="small muted">Pick a ticket. Higher odds = bigger win, smaller chance. 18+ only. Bet responsibly.</p></div>
+        ${tickets.map(([o, st]) => `<div class="ph-card"><div class="ph-row" style="justify-content:space-between;align-items:center;margin:0"><span><b>${o} odds</b><br><span class="small muted">Stake ${naira(st)} → win ${naira(st * o)}</span></span><button class="small" data-ui="bet" data-odds="${o}" data-stake="${st}" ${S.money < st || S.age < 18 ? 'disabled' : ''}>Place bet</button></div></div>`).join('')}`;
+    },
+    street() { return renderStreet(); },
+    me() { return renderHustle(); },
+    news() { return renderLife(); },
+    store() { return renderStore(); },
+    settings() {
+      return `<div class="ph-card"><label class="switch"><input type="checkbox" data-act="auto" ${S.auto ? 'checked' : ''}> <span>🤖 Auto-routine (eat, sleep & hustle by yourself)</span></label></div>
+        <div class="ph-card"><b>View</b><div class="ph-row"><button class="small ${viewMode === '3d' ? '' : 'secondary'}" data-ui="view-3d">3D</button><button class="small ${viewMode === '2d' ? '' : 'secondary'}" data-ui="view-2d">2D</button><button class="small secondary" data-ui="classic">Classic menus & Ogun map</button></div></div>
+        <div class="ph-card"><b>Game</b><div class="ph-row"><button class="small" data-ui="save">💾 Export save</button><button class="small secondary" data-ui="load">📂 Import save</button><button class="small danger" data-ui="new">✨ New life</button></div></div>
+        <p class="small muted">Rent every Saturday. Keep your needs up. From sapa to stardom!</p>`;
+    },
+  };
+
+  function showPeopleNearby() {
+    const w = window.__ogs3d;
+    const people = w ? w.nearbyPeople() : [];
+    worldSheet = { id: '__people', name: 'People nearby', actions: [], blurb: '' };
+    $('#world-sheet').hidden = false;
+    setHTML($('#world-sheet'), `<div class="row between"><h3 style="margin:0">👥 People nearby</h3><button class="small secondary" data-ui="world-close">✕ Close</button></div>
+      ${people.length ? people.map((p) => `<div class="prog"><span>${p.female ? '👩🏾' : '👨🏾'} <b>${h(p.name)}</b></span><span class="row"><button class="small" data-ui="befriend" data-name="${h(p.name)}" data-g="${p.female ? 'female' : 'male'}">Gist & befriend</button></span></div>`).join('') : '<p class="muted">Nobody close by. Walk up to someone on the street first.</p>'}`);
+  }
+
+  // Birth lottery: Nepo, LAPO or Village.
+  function lottery(base, village, done) {
+    const keys = Object.keys(HU.STARTS);
+    const roll = Math.random();
+    const pickKey = roll < 0.25 ? 'nepo' : roll < 0.7 ? 'lapo' : 'village';
+    openModal(`<h2>🎲 Birth lottery</h2><div class="lottery"><div class="spin" id="lot-emoji">🎲</div><div class="lname" id="lot-name">…</div><p id="lot-desc" class="muted"></p></div><div class="choices"><button id="lot-go" disabled>Spinning…</button></div>`);
+    let i = 0;
+    const t = setInterval(() => {
+      const k = keys[i++ % keys.length];
+      $('#lot-emoji').textContent = HU.STARTS[k].emoji; $('#lot-name').textContent = HU.STARTS[k].label;
+    }, 120);
+    setTimeout(() => {
+      clearInterval(t);
+      const st = HU.STARTS[pickKey];
+      $('#lot-emoji').textContent = st.emoji; $('#lot-name').textContent = st.label; $('#lot-desc').textContent = st.desc;
+      const go = $('#lot-go'); go.disabled = false; go.textContent = 'Start my life in Abeokuta 🚀';
+      go.addEventListener('click', () => done(HU.newHustleGame({ ...base, village, start: pickKey })));
+    }, 2200);
   }
 
   // ----- hustle -----
@@ -776,7 +994,8 @@
         <div class="seg"><label><input type="radio" name="gender" value="male" checked>👦🏾 Guy</label><label><input type="radio" name="gender" value="female">👧🏾 Babe</label></div>
         <label>First name<input name="first" required maxlength="20" placeholder="e.g. Ayomide"></label>
         <label>Surname<input name="last" required maxlength="20" placeholder="e.g. Odusanya"></label>
-        <div id="hustle-fields"><label>Your village (where your family lives)<select name="village">${villages.map((x) => `<option value="${x.id}" ${x.id === 'ogbere' ? 'selected' : ''}>${h(x.name)} (${h(E.lgaName(x.lga))})</option>`).join('')}</select></label></div>
+        <div id="hustle-fields"><label>How do you start?<select name="start"><option value="spin">🎲 Spin the birth lottery (Nepo / LAPO / Village)</option>${Object.entries(HU.STARTS).map(([k, v]) => `<option value="${k}">${v.emoji} ${v.label}</option>`).join('')}</select></label>
+          <label>Your village (where your family lives)<select name="village">${villages.map((x) => `<option value="${x.id}" ${x.id === 'ogbere' ? 'selected' : ''}>${h(x.name)} (${h(E.lgaName(x.lga))})</option>`).join('')}</select></label></div>
         <div id="life-fields" hidden>
           <label>Hometown<select name="town">${towns.map((x) => `<option value="${x.id}" ${x.id === 'abeokuta' ? 'selected' : ''}>${h(x.name)} (${h(E.lgaName(x.lga))})</option>`).join('')}</select></label>
           <label>Born into…<select name="wealth" id="bg-select"><option value="">🎲 Let fate decide</option>${bg.map(([k, w]) => `<option value="${k}">${h(w.label)}</option>`).join('')}</select></label>
@@ -805,9 +1024,20 @@
       ev.preventDefault();
       const fd = new FormData(ev.target);
       const base = { first: fd.get('first').trim(), last: fd.get('last').trim(), gender: fd.get('gender') };
-      S = fd.get('mode') === 'hustle'
-        ? HU.newHustleGame({ ...base, village: fd.get('village') })
-        : E.newGame({ ...base, town: fd.get('town'), wealth: fd.get('wealth') || undefined });
+      const begin = (state) => {
+        S = state;
+        lastMapTown = null; overlayKey = null; classicView = false;
+        closeModal();
+        switchTab(isH() ? 'world' : 'today');
+        afterAction();
+        if (mapReady) M.focusMe(S);
+        toast(isH() ? 'Press ▶ to start the clock. Open your 📱 Phone to find work.' : 'Press ▶ to start the clock.', 'good');
+      };
+      if (fd.get('mode') === 'hustle') {
+        if (fd.get('start') === 'spin') return lottery(base, fd.get('village'), begin);
+        return begin(HU.newHustleGame({ ...base, village: fd.get('village'), start: fd.get('start') }));
+      }
+      S = E.newGame({ ...base, town: fd.get('town'), wealth: fd.get('wealth') || undefined });
       lastMapTown = null;
       overlayKey = null;
       closeModal();
@@ -953,6 +1183,31 @@
       case 'view-3d': setView('3d'); return;
       case 'world-close': worldSheet = null; renderWorldHud(); return;
       case 'random-name': randomName(); return;
+      case 'phone': if (phone.open) closePhone(); else openPhone(); return;
+      case 'app': openPhone(el.dataset.app); return;
+      case 'ph-home': phone.app = null; phone.thread = null; renderPhone(); return;
+      case 'ph-back': if (phone.thread) phone.thread = null; else if (phone.app) phone.app = null; else closePhone(); renderPhone(); return;
+      case 'ph-thread': phone.thread = el.dataset.from || null; renderPhone(); save(); return;
+      case 'hud-play': if (S) { if (S.ended || !S.alive) return showNewGame(); clock.running = !clock.running; if (clock.running && S.events.length) showModalForState(); renderGameHud(); renderClock(); } return;
+      case 'hud-speed': clock.speed = clock.speed === 1 ? 3 : clock.speed === 3 ? 10 : 1; renderGameHud(); renderClock(); return;
+      case 'people': showPeopleNearby(); return;
+      case 'befriend': { const r = HU.befriend(S, el.dataset.name, el.dataset.g); toast(r.msg, r.ok ? 'good' : 'bad'); save(); render(); return; }
+      case 'bank': {
+        const amt = +el.dataset.amt; const op = el.dataset.op;
+        const r = op === 'deposit' ? HU.deposit(S, amt) : op === 'withdraw' ? HU.withdraw(S, amt) : op === 'loan' ? HU.takeLoan(S, amt) : HU.repayLoan(S, amt);
+        return result(r);
+      }
+      case 'bet': return result(HU.placeBet(S, +el.dataset.stake, +el.dataset.odds));
+      case 'ride': {
+        const w = window.__ogs3d; const id = el.dataset.id;
+        if (!w) return;
+        const def = WO.PLACES.find((x) => x.id === id);
+        const r = HU.ride(S, w.distanceTo(id), def ? def.name : id);
+        if (r.ok) { w.travelTo(id); closePhone(); }
+        return result(r);
+      }
+      case 'classic': classicView = true; closePhone(); applyGameShell(); switchTab('today'); render(); return;
+      case 'back-to-game': classicView = false; applyGameShell(); switchTab('world'); render(); return;
     }
   }
 
@@ -1051,6 +1306,7 @@
     }
     S = loadSaved();
     if (S) {
+      if (isH()) switchTab('world');
       render();
       if (S.events.length || S.ended || !S.alive) showModalForState();
     } else {
