@@ -216,6 +216,7 @@
       run: (s) => { s.dayActs.overtime = true; s.week.overtime += dailyPay(s) * 0.35; s.job.perf = clamp(s.job.perf + 1); need(s, 'energy', -8); return 'You stayed back for overtime. Extra money is coming on payday.'; } },
     { id: 'hustle', group: 'School & work', icon: '🛒', name: 'Side hustle (sell, run errands)', hours: 4, cost: 0, minAge: 12,
       run: (s) => { const earn = round1k(randInt(s, 3, 14) * 1000 * (s.age >= 18 ? 2.5 : 1)); s.money += earn; need(s, 'energy', -8); return `You hustled and made ${naira(earn)}.`; } },
+    { id: 'doctor', group: 'Food & rest', icon: '🩺', name: 'See a doctor (hospital)', hours: 2, cost: 15000, minAge: 0, run: (s) => { stat(s, 'health', 8); stat(s, 'happiness', 1); return pick(s, ['The doctor checked you, wrote drugs and said "rest well".', 'Two hours on the queue, five minutes with the doctor. But you feel better.']); } },
     { id: 'read', group: 'School & work', icon: '📚', name: 'Read a book', hours: 2, cost: 0, minAge: 7, run: (s) => { need(s, 'fun', 3); if (chance(s, 0.04)) stat(s, 'smarts', 1); return pick(s, ['You read a Chinua Achebe novel.', 'You read a Wole Soyinka play.', 'You read a self-help book about wealth.']); } },
 
     // --- fun & social ---

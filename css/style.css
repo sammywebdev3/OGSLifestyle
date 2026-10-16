@@ -293,7 +293,7 @@ body.game .world-prompt { bottom: calc(108px + env(safe-area-inset-bottom)); rig
 .world-leave { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); z-index: 21; padding: 10px 18px; border-radius: 999px; font-weight: 800; background: rgba(10, 15, 20, .72); color: #fff; border: 2px solid #ffd54a; box-shadow: 0 6px 18px rgba(0, 0, 0, .35); white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
 body.game .world-leave { bottom: calc(36px + env(safe-area-inset-bottom)); max-width: calc(100vw - 260px); }
 body.game .joystick { bottom: calc(26px + env(safe-area-inset-bottom)); left: 20px; width: 120px; height: 120px; }
-body.game .world-sheet { z-index: 30; right: 96px; bottom: calc(10px + env(safe-area-inset-bottom)); }
+body.game .world-sheet { z-index: 30; right: 10px; bottom: calc(80px + env(safe-area-inset-bottom)); max-height: 60%; }
 
 .hud { position: absolute; inset: 0; pointer-events: none; z-index: 10; color: #fff; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 .hud button { pointer-events: auto; }
@@ -365,7 +365,34 @@ body.game .world-sheet { z-index: 30; right: 96px; bottom: calc(10px + env(safe-
 .lottery .lname { font-size: 34px; font-weight: 900; letter-spacing: 2px; }
 .back-to-game { position: fixed; left: 50%; transform: translateX(-50%); top: 70px; z-index: 1100; border-radius: 999px; padding: 10px 18px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); }
 @media (max-width: 640px) {
-  body.game .minimap { top: 70px; }
+  body.game .minimap { top: calc(112px + env(safe-area-inset-top)); }
   .hud-cash { font-size: 14px; padding: 8px 10px; }
   .hud-id b, .hud-id small { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 }
+
+/* Lagos-Life style chrome: second top row, bottom nav, map pins */
+.hud-row2 { position: absolute; top: calc(60px + env(safe-area-inset-top)); left: 8px; right: 8px; display: flex; gap: 8px; align-items: center; }
+.hud-chip { pointer-events: auto; background: rgba(255, 255, 255, .92); color: #1d2733; font-weight: 800; font-size: 14px; padding: 8px 14px; border-radius: 999px; box-shadow: 0 4px 14px rgba(0, 0, 0, .25); white-space: nowrap; }
+.hud-chip.dark { background: #13202e; color: #fff; }
+.hud-chip.on { background: #ffd54a; color: #111; }
+.hud-nav { position: absolute; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); height: 62px; display: flex; gap: 4px; padding: 5px; background: #fff; border-radius: 22px; box-shadow: 0 8px 26px rgba(0, 0, 0, .35); z-index: 20; }
+.hud-nav button { flex: 1; display: grid; place-items: center; align-content: center; gap: 1px; padding: 0; border-radius: 17px; background: transparent; color: #4a5562; font-size: 21px; line-height: 1; position: relative; }
+.hud-nav button small { font-size: 11px; font-weight: 800; }
+.hud-nav button.on { background: #13202e; color: #fff; }
+.hud-nav .nav-phone { flex: 0 0 62px; background: #f1f3f6; font-size: 26px; }
+.hud-nav .badge { top: 2px; right: 6px; }
+body.game .hud-needs { top: calc(112px + env(safe-area-inset-top)); }
+body.game .hud-side { top: calc(250px + env(safe-area-inset-top)); }
+body.game .hud-actions { bottom: calc(150px + env(safe-area-inset-bottom)); }
+body.game .minimap { top: calc(112px + env(safe-area-inset-top)); }
+body.game .joystick { bottom: calc(86px + env(safe-area-inset-bottom)); }
+body.game .world-prompt { bottom: calc(92px + env(safe-area-inset-bottom)); }
+body.game .world-leave { bottom: calc(92px + env(safe-area-inset-bottom)); }
+body.game.mapview .joystick, body.game.mapview .world-prompt, body.game.mapview [data-ui="people"] { display: none; }
+.pin-layer { position: absolute; inset: 0; pointer-events: none; z-index: 3; overflow: hidden; }
+.pin { position: absolute; left: 0; top: 0; pointer-events: auto; padding: 0; background: none; border: 0; display: grid; justify-items: center; margin: -42px 0 0 -21px; width: 42px; }
+.pin-ic { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 22px; background: #fff; box-shadow: 0 3px 10px rgba(0, 0, 0, .35); border: 2px solid #fff; }
+.pin.me .pin-ic { background: linear-gradient(135deg, #0b6e4f, #23408e); border-color: #ffd54a; }
+.pin-name { display: none; margin-top: 3px; padding: 2px 7px; border-radius: 999px; background: rgba(10, 15, 20, .78); color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.pin-layer.names .pin-name { display: block; }
+.pin:active .pin-ic { transform: scale(.92); }

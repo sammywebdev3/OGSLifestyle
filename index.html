@@ -62,6 +62,11 @@
             <div class="hud-cash" id="hud-cash"></div>
             <div class="hud-time"><button class="hud-round" id="hud-play" data-ui="hud-play" title="Play / pause">▶</button><div><b id="hud-clock"></b><small id="hud-day"></small></div><button class="hud-round" id="hud-speed" data-ui="hud-speed" title="Speed">1×</button></div>
           </div>
+          <div class="hud-row2">
+            <button class="hud-chip dark" data-ui="city">📍 Abeokuta ▾</button>
+            <button class="hud-chip" data-ui="names" id="hud-names">🏷️ Names</button>
+            <button class="hud-chip" data-ui="phone">⊞ More</button>
+          </div>
           <div class="hud-needs" id="hud-needs"></div>
           <div class="hud-side">
             <button class="hud-btn" data-ui="people" title="People nearby">👥</button>
@@ -69,7 +74,13 @@
             <button class="hud-btn" data-ui="app" data-app="messages" title="Messages">💬<span class="badge" id="msg-badge" hidden></span></button>
           </div>
           <div class="hud-actions" id="hud-actions"></div>
-          <button class="hud-phone" data-ui="phone" id="hud-phone" title="Phone">📱<span class="badge" id="phone-badge" hidden></span></button>
+          <nav class="hud-nav" id="hud-nav">
+            <button data-ui="nav-home">🏠<small>Home</small></button>
+            <button data-ui="nav-buy">🛍️<small>Buy</small></button>
+            <button data-ui="nav-map" id="nav-map">🗺️<small>Map</small></button>
+            <button data-ui="nav-walk" id="nav-walk">🚶<small>Walk</small></button>
+            <button data-ui="phone" class="nav-phone" id="hud-phone" title="Phone">📱<span class="badge" id="phone-badge" hidden></span></button>
+          </nav>
         </div>
         <div class="phone" id="phone" hidden>
           <div class="phone-frame">

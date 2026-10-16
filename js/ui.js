@@ -29,7 +29,9 @@
   const HUSTLE_ONLY_TABS = ['hustle', 'store', 'world'];
   const WO = root.OGS.World;
   let worldNear = null;
-  let insideName = null; // the building you are inside (3D), if any
+  let insideName = null;
+  let mapView = false; // 3D map view (pins) vs walking
+  let namesOn = false; // the building you are inside (3D), if any
   let worldSheet = null;
   const clock = { running: false, speed: 1, acc: 0, saveAcc: 0 };
   const ui = {
@@ -257,6 +259,7 @@
       return true;
     },
     inside: (name) => { insideName = name; worldSheet = null; renderWorldHud(); },
+    mode: (m) => { mapView = m === 'map'; document.body.classList.toggle('mapview', mapView); renderWorldHud(); renderGameHud(); },
     blocked: () => modalOpen() || !!worldSheet || phone.open || !!(S && S.events.length),
   };
 
@@ -289,9 +292,17 @@
     if (p.extra === 'houses') extra = `<p class="small">You live in: <b>${h(HU.HOUSES[hu.house].name)}</b>.</p><button class="small" data-tab="assets">See houses & land</button>`;
     if (p.extra === 'bike') extra = E.hasAssetKind(S, 'motorbike') ? '<p class="small">You ride your own bike. 💪</p>' : `<button class="small secondary" data-act="buy" data-id="motorbike" ${S.money < E.ASSET.motorbike.price ? 'disabled' : ''}>Buy your own bike (${naira(E.ASSET.motorbike.price)})</button>`;
     if (p.extra === 'owambe') extra = `<p class="small">The next owambe is on <b>Saturday</b>${S.clock.dow === 5 ? ' — that\'s today!' : ''}. ${hu.drip && hu.drip.includes('aso-oke') ? 'Your aso-oke is ready. 🔥' : 'Buy aso-oke in the Hustle tab to look the part.'}</p>`;
+    if (p.extra === 'bank') extra = '<button class="small" data-ui="app" data-app="bank">🏦 Open the Bank app</button>';
+    if (p.extra === 'shop') extra = '<button class="small" data-ui="app" data-app="buy">🛍️ Shop now</button>';
     if (p.extra === 'trace') extra = `<p class="small">${hu.impound ? `🚫 Your bike is impounded for ${hu.impound} more day(s).` : 'You have nothing impounded. Keep it that way!'}</p>`;
-    return `<div class="row between"><h3 style="margin:0">${h(p.name)}</h3><button class="small secondary" data-ui="world-close">✕ Leave</button></div>
-      <p class="small muted">${h(p.blurb)}</p>${acts.length ? `<div class="acts">${actionButtons(acts)}</div>` : ''}${extra}`;
+    const w3 = window.__ogs3d;
+    let go = '';
+    if (mapView && w3 && w3.placeDef(p.id)) {
+      const mins = Math.max(2, Math.round(w3.distanceTo(p.id) / 70));
+      go = `<div class="row" style="margin:6px 0">${w3.hasInterior(p.id) ? `<button class="small" data-ui="go-inside" data-id="${p.id}">🚪 Go inside (${mins} min walk)</button>` : ''}<button class="small secondary" data-ui="goto" data-id="${p.id}">🚶 Walk there (${mins} min)</button></div>`;
+    }
+    return `<div class="row between"><h3 style="margin:0">${h(p.name)}</h3><button class="small secondary" data-ui="world-close">✕ ${mapView ? 'Close' : 'Leave'}</button></div>
+      <p class="small muted">${h(p.blurb)}</p>${go}${acts.length ? `<div class="acts">${actionButtons(acts)}</div>` : ''}${extra}`;
   }
 
   let viewMode = (() => { try { return localStorage.getItem('ogs-view') || '3d'; } catch (e) { return '3d'; } })();
@@ -343,6 +354,7 @@
 
   const APPS = [
     { id: 'jobs', icon: '💼', name: 'Jobs', ac: '#2c3e50' },
+    { id: 'buy', icon: '🛒', name: 'Buy', ac: '#d35400' },
     { id: 'bank', icon: '🏦', name: 'Bank', ac: '#0b6e4f' },
     { id: 'messages', icon: '💬', name: 'Messages', ac: '#25a35a' },
     { id: 'chopnow', icon: '🍔', name: 'ChopNow', ac: '#e67e22' },
@@ -366,6 +378,7 @@
   function applyGameShell() {
     const g = inGame();
     document.body.classList.toggle('game', g);
+    document.body.classList.toggle('mapview', g && mapView);
     $('#hud').hidden = !g;
     $('#back-to-game').hidden = !(isH() && classicView);
     if (!g && phone.open) closePhone();
@@ -404,6 +417,7 @@
     setHTML($('#hud-actions'), btns.slice(0, 3).join(''));
     const n = HU.unread(S);
     for (const id of ['#phone-badge', '#msg-badge']) { const b = $(id); b.hidden = !n; b.textContent = n; }
+    $('#nav-map').classList.toggle('on', mapView); $('#nav-walk').classList.toggle('on', !mapView); $('#hud-names').classList.toggle('on', namesOn);
     if (phone.open) renderPhone();
   }
 
@@ -480,11 +494,15 @@
       const places = here ? here.placesList() : [];
       if (!places.length) return '<p class="muted">Open the 3D town to use GoRide.</p>';
       return `<p class="small muted">Book a ride to anywhere in Abeokuta. Faster than trekking!</p><div class="ph-list">${places.map((p) => {
-        const def = WO.PLACES.find((x) => x.id === p.id);
+        const def = here.placeDef(p.id);
         const dist = here.distanceTo(p.id);
         const fare = HU.rideFare(dist);
         return `<button class="ph-item" data-ui="ride" data-id="${p.id}" ${dist < 6 ? 'disabled' : ''}><span><b>${h(def ? def.name : p.id)}</b><small>${h(p.road)} · ${Math.round(dist)} m away</small></span><b>${dist < 6 ? 'Here' : naira(fare)}</b></button>`;
       }).join('')}</div>`;
+    },
+    buy() {
+      const card = (app, icon, title, sub) => `<button class="ph-item" data-ui="app" data-app="${app}"><span><b>${icon} ${title}</b><small>${sub}</small></span><b>›</b></button>`;
+      return `<p class="small muted">What are you buying today?</p><div class="ph-list">${card('houses', '🏠', 'Houses & land', 'Rent, buy or build. Face-me-I-face-you to GRA duplex.')}${card('cars', '🚗', 'Cars & bikes', 'Okada, keke, Corolla, Benz…')}${card('shop', '👔', 'Drip & clothes', 'Adire, anago, corporate, aso-oke.')}${card('chopnow', '🍔', 'Food delivery', 'ChopNow brings food to you.')}${card('store', '💎', 'Store', 'Coins and extras.')}</div>`;
     },
     houses() { return renderHustleHome(); },
     cars() {
@@ -521,6 +539,12 @@
         <p class="small muted">Rent every Saturday. Keep your needs up. From sapa to stardom!</p>`;
     },
   };
+
+  function showCityPicker() {
+    const towns = [['Abeokuta', 'Kuto, Ibara, Ake, Oke-Mosan', true], ['Ijebu-Ode', 'Ojude Oba country', false], ['Sagamu', 'Remo land', false], ['Ota', 'Industrial gateway', false], ['Ilaro', 'Yewa land', false]];
+    openModal(`<h2>📍 Choose a city</h2><div class="ph-list">${towns.map(([n, sub, on]) => `<div class="ph-item"><span><b>${on ? '✅' : '🚧'} ${n}</b><small>${sub}</small></span><b class="small">${on ? 'You are here' : 'Coming soon'}</b></div>`).join('')}</div>
+      <div class="choices"><button data-ui="real-map">🗺️ Open the real Ogun State map</button><button class="secondary" data-ui="close">Close</button></div>`);
+  }
 
   function showPeopleNearby() {
     const w = window.__ogs3d;
@@ -1205,6 +1229,36 @@
       case 'view-2d': setView('2d'); return;
       case 'view-3d': setView('3d'); return;
       case 'world-close': worldSheet = null; renderWorldHud(); return;
+      case 'nav-home': openPhone('me'); return;
+      case 'nav-buy': openPhone('buy'); return;
+      case 'nav-map': if (window.__ogs3d) { closePhone(); worldSheet = null; window.__ogs3d.setMapMode(true); } return;
+      case 'nav-walk': if (window.__ogs3d) { closePhone(); worldSheet = null; window.__ogs3d.setMapMode(false); } return;
+      case 'names': namesOn = !namesOn; if (window.__ogs3d) window.__ogs3d.setNames(namesOn); renderGameHud(); return;
+      case 'city': return showCityPicker();
+      case 'real-map': closeModal(); classicView = true; applyGameShell(); switchTab('map'); render(); return;
+      case 'pin': {
+        const w = window.__ogs3d; const id = el.dataset.id;
+        if (!w) return;
+        if (id === 'me') { w.setMapMode(false); return; }
+        const def = w.placeDef(id);
+        if (def) { worldSheet = def; renderWorldHud(); }
+        return;
+      }
+      case 'goto': case 'go-inside': {
+        const w = window.__ogs3d; const id = el.dataset.id;
+        if (!w || !S) return;
+        const def = w.placeDef(id);
+        const mins = Math.max(2, Math.round(w.distanceTo(id) / 70)); // walking pace
+        if (S.events.length) return showModalForState();
+        L.passTime(S, mins);
+        w.travelTo(id);
+        worldSheet = null;
+        w.setMapMode(false);
+        toast(`🚶 You walked to ${def ? def.name : id} (${mins} min).`, 'good');
+        if (el.dataset.ui === 'go-inside' && worldHooks.tryEnter(id)) w.enterBuilding(id);
+        afterAction();
+        return;
+      }
       case 'leave-building': if (window.__ogs3d) window.__ogs3d.exitBuilding(); return;
       case 'random-name': randomName(); return;
       case 'phone': if (phone.open) closePhone(); else openPhone(); return;
@@ -1225,9 +1279,9 @@
       case 'ride': {
         const w = window.__ogs3d; const id = el.dataset.id;
         if (!w) return;
-        const def = WO.PLACES.find((x) => x.id === id);
+        const def = w.placeDef(id);
         const r = HU.ride(S, w.distanceTo(id), def ? def.name : id);
-        if (r.ok) { w.travelTo(id); closePhone(); }
+        if (r.ok) { w.travelTo(id); closePhone(); if (w.isMapMode()) w.focusPlace(id); }
         return result(r);
       }
       case 'classic': classicView = true; closePhone(); applyGameShell(); switchTab('today'); render(); return;
