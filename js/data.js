@@ -175,6 +175,8 @@
     { id: 'kuto', name: 'Kuto Market', kind: 'market', town: 'abeokuta', lat: 7.141, lng: 3.357, fee: 0, blurb: 'Busy food and general goods market.' },
     { id: 'alake', name: "Alake's Palace, Ake", kind: 'landmark', town: 'abeokuta', lat: 7.155, lng: 3.352, fee: 1000, blurb: 'Palace of the Alake of Egbaland.' },
     { id: 'oopl', name: 'Olusegun Obasanjo Presidential Library', kind: 'landmark', town: 'abeokuta', lat: 7.17, lng: 3.37, fee: 5000, blurb: 'Museum, library and wildlife park.' },
+    { id: 'panseke', name: 'Panseke Junction', kind: 'leisure', town: 'abeokuta', lat: 7.163, lng: 3.358, fee: 0, blurb: 'Bukas, beer parlours and Abeokuta nightlife.' },
+    { id: 'ibara-gra', name: 'Ibara GRA', kind: 'housing', town: 'abeokuta', lat: 7.128, lng: 3.336, fee: 0, blurb: 'Leafy streets, big duplexes and old money.' },
     { id: 'mko-stadium', name: 'MKO Abiola Stadium, Kuto', kind: 'leisure', town: 'abeokuta', lat: 7.143, lng: 3.36, fee: 1500, blurb: 'Watch the Ogun boys play live.' },
     { id: 'awujale', name: "Awujale's Palace (Ojude Oba ground)", kind: 'landmark', town: 'ijebu-ode', lat: 6.82, lng: 3.921, fee: 0, blurb: 'Where the colourful Ojude Oba festival holds after Eid.' },
     { id: 'sungbo', name: "Bilikisu Sungbo's Shrine & Eredo, Oke-Eri", kind: 'landmark', town: 'ijebu-ode', lat: 6.8, lng: 4.0, fee: 2000, blurb: 'Ancient earthworks linked to the legendary Queen Bilikisu Sungbo.' },
@@ -314,6 +316,8 @@
     { id: 'keke', name: 'Keke NAPEP', price: 3800000, kind: 'keke', depreciation: 0.12, happiness: 3 },
     { id: 'car-corolla', name: 'Toyota Corolla (tokunbo)', price: 11000000, kind: 'car', depreciation: 0.1, happiness: 12, looks: 3 },
     { id: 'car-venza', name: 'Toyota Venza', price: 22000000, kind: 'car', depreciation: 0.1, happiness: 15, looks: 5 },
+    { id: 'car-benz', name: 'Mercedes-Benz C300 (tokunbo)', price: 28000000, kind: 'car', depreciation: 0.1, happiness: 18, looks: 6, clout: 20 },
+    { id: 'land-owode', name: 'Plot of land, Obafemi-Owode', price: 2000000, kind: 'land', appreciation: 0.15, happiness: 5, clout: 3 },
     { id: 'land-mowe', name: 'Plot of land, Mowe', price: 6000000, kind: 'land', appreciation: 0.15, happiness: 5 },
     { id: 'land-abk', name: 'Plot of land, Abeokuta (Kobape)', price: 3500000, kind: 'land', appreciation: 0.12, happiness: 5 },
     { id: 'house-ifo', name: '3-bedroom bungalow, Ifo', price: 30000000, kind: 'house', appreciation: 0.1, happiness: 20, rentIncome: 1200000 },
@@ -334,7 +338,9 @@
     keke: { name: 'Keke', perKm: 160, danger: 0.6, maxKm: 25 },
     okada: { name: 'Okada', perKm: 280, danger: 1.5, maxKm: 40 },
     car: { name: 'Own car (fuel)', perKm: 110, danger: 0.2, needsAsset: 'car' },
-    ride: { name: 'Ride-hailing', perKm: 450, danger: 0.1 },
+    ride: { name: 'Uber / Bolt', perKm: 450, danger: 0.1 },
+    bike: { name: 'Own motorbike', perKm: 45, danger: 1.2, needsAsset: 'motorbike' },
+    trek: { name: 'Trek (free, slow)', perKm: 0, danger: 0.05, maxKm: 10 },
   };
 
   return {

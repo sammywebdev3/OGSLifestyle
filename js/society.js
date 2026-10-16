@@ -320,7 +320,7 @@
       },
     },
     godfather: {
-      build: () => ({ title: '🎩 The godfather calls', text: 'Your political godfather wants his "returns": ₦20,000,000 and control of all contracts in your area.', choices: [{ label: 'Pay and obey', value: 'pay' }, { label: 'Refuse — you are your own person', value: 'refuse' }] }),
+      build: () => ({ title: '🎩 The godfather calls', text: 'Your political godfather wants his "returns": ₦20,000,000 and control of all contracts in your area.', choices: [{ label: 'Pay ₦20,000,000 and obey', value: 'pay' }, { label: 'Refuse — you are your own person', value: 'refuse' }] }),
       resolve(s, v) {
         if (v === 'pay') { s.money -= 20000000; return 'The godfather is happy. For now.'; }
         s.flags.godfather = false; s.politics.popularity = clamp(s.politics.popularity + 8);

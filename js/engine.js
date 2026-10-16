@@ -1153,7 +1153,7 @@
     if (!t) return { ok: false, msg: 'Unknown transport.' };
     if (t.needsAsset && !hasAssetKind(s, t.needsAsset)) return { ok: false, msg: `You don't own a ${t.needsAsset}.`, km: d };
     if (t.maxKm && d > t.maxKm) return { ok: false, msg: `${t.name} won't go that far (${Math.round(d)} km).`, km: d };
-    const cost = round1k(Math.max(500, d * 2 * t.perKm));
+    const cost = t.perKm ? round1k(Math.max(500, d * 2 * t.perKm)) : 0;
     return { ok: true, km: d, cost };
   }
 
@@ -1237,7 +1237,17 @@
     const def = EVENTS[id];
     const built = def.build(s, data);
     if (!built) return;
-    s.events.push({ id, data, title: built.title, text: built.text, choices: built.choices.map((c) => ({ label: c.label, value: c.value })) });
+    const choices = built.choices.map((c) => ({ label: c.label, value: c.value }));
+    // Grey out choices whose price (the first ₦ amount in the label) you can't pay.
+    // Children at home are covered by their parents.
+    const covered = s.age < 18 && s.livingWithParents && parentsAlive(s);
+    for (const c of choices) {
+      const m = /₦([\d,]+)/.exec(c.label);
+      const price = m ? +m[1].replace(/,/g, '') : 0;
+      if (price && !covered && s.money < price && !/fine|lose/i.test(c.label)) c.disabled = `You don't have ${naira(price)}`;
+    }
+    if (choices.every((c) => c.disabled)) delete choices[choices.length - 1].disabled;
+    s.events.push({ id, data, title: built.title, text: built.text, choices });
   }
 
   function resolveEvent(s, choiceIndex) {
@@ -1245,6 +1255,7 @@
     if (!ev) return { ok: false, msg: 'No event.' };
     const choice = ev.choices[choiceIndex];
     if (!choice) return { ok: false, msg: 'Invalid choice.' };
+    if (choice.disabled) return { ok: false, msg: choice.disabled };
     s.events.shift();
     const msg = EVENTS[ev.id].resolve(s, choice.value, ev.data) || '';
     if (msg) log(s, msg, 'event');
@@ -1306,7 +1317,7 @@
         return {
           title: 'NYSC call-up letter',
           text: `Your NYSC call-up letter is out! You have been posted to ${st} State for your service year (allowance ${naira(NYSC_ALLOWANCE)}/month).`,
-          choices: [{ label: `Go and serve in ${st}`, value: 'go:' + st }, { label: 'Pull strings to redeploy to Ogun', value: 'redeploy' }, { label: 'Skip NYSC (risky for jobs)', value: 'skip' }],
+          choices: [{ label: `Go and serve in ${st}`, value: 'go:' + st }, { label: 'Pull strings to redeploy to Ogun (₦50,000)', value: 'redeploy' }, { label: 'Skip NYSC (risky for jobs)', value: 'skip' }],
         };
       },
       resolve(s, v) {
@@ -1364,7 +1375,7 @@
     },
     'power-bill': {
       weight: 3, when: (s) => !s.livingWithParents && s.age >= 18,
-      build: () => ({ title: 'Crazy estimated bill', text: 'IBEDC sent you an estimated bill of ₦85,000 even though there was barely any light.', choices: [{ label: 'Pay to avoid disconnection', value: 'pay' }, { label: 'Protest at the IBEDC office', value: 'protest' }] }),
+      build: () => ({ title: 'Crazy estimated bill', text: 'IBEDC sent you an estimated bill of ₦85,000 even though there was barely any light.', choices: [{ label: 'Pay ₦85,000 to avoid disconnection', value: 'pay' }, { label: 'Protest at the IBEDC office', value: 'protest' }] }),
       resolve(s, v) {
         if (v === 'pay') { spend(s, 85000); return 'You paid the bill, grumbling.'; }
         if (chance(s, 0.5)) { spend(s, 20000); return 'After much argument they reduced it to ₦20,000.'; }
@@ -1382,7 +1393,7 @@
     },
     owambe: {
       weight: 5, when: (s) => s.age >= 14,
-      build: () => ({ title: 'Aso-ebi invitation', text: 'A family friend is having a big party in town and the aso-ebi is ₦45,000.', choices: [{ label: 'Buy the aso-ebi and slay', value: 'aso' }, { label: 'Go in your own clothes', value: 'plain' }, { label: 'Decline', value: 'no' }] }),
+      build: () => ({ title: 'Aso-ebi invitation', text: 'A family friend is having a big party in town and the aso-ebi is ₦45,000.', choices: [{ label: 'Buy the ₦45,000 aso-ebi and slay', value: 'aso' }, { label: 'Go in your own clothes', value: 'plain' }, { label: 'Decline', value: 'no' }] }),
       resolve(s, v) {
         if (v === 'aso') {
           spend(s, 45000); stat(s, 'happiness', 8); stat(s, 'looks', 1);
@@ -1454,7 +1465,7 @@
     },
     expo: {
       weight: 5, when: (s) => s.edu.current && s.edu.current.kind === 'secondary' && s.edu.current.year === 6 && !s.flags.expoAsked,
-      build(s) { s.flags.expoAsked = true; return { title: 'WAEC "expo"', text: 'A classmate is selling leaked WAEC answers ("expo") for ₦20,000. Some teachers are even helping.', choices: [{ label: 'Refuse and study', value: 'no' }, { label: 'Buy the expo', value: 'yes' }] }; },
+      build(s) { s.flags.expoAsked = true; return { title: 'WAEC "expo"', text: 'A classmate is selling leaked WAEC answers ("expo") for ₦20,000. Some teachers are even helping.', choices: [{ label: 'Refuse and study', value: 'no' }, { label: 'Buy the expo (₦20,000)', value: 'yes' }] }; },
       resolve(s, v) {
         if (v === 'yes') { spend(s, 20000); s.flags.expo = true; s.karma = clamp(s.karma - 8); return 'You bought expo. Hopefully WAEC doesn\'t catch it...'; }
         s.edu.effort = Math.min(15, s.edu.effort + 2); return 'You refused and studied harder.';
@@ -1522,7 +1533,7 @@
     },
     'omo-onile': {
       weight: 4, when: (s) => hasAssetKind(s, 'land'),
-      build: () => ({ title: 'Omo onile', text: 'Land grabbers ("omo onile") showed up at your plot demanding a "foundation levy" of ₦300,000.', choices: [{ label: 'Pay them', value: 'pay' }, { label: 'Report to the police', value: 'police' }] }),
+      build: () => ({ title: 'Omo onile', text: 'Land grabbers ("omo onile") showed up at your plot demanding a "foundation levy" of ₦300,000.', choices: [{ label: 'Pay them ₦300,000', value: 'pay' }, { label: 'Report to the police', value: 'police' }] }),
       resolve(s, v) {
         if (v === 'pay') { spend(s, 300000); return 'You paid. They promised not to come back… for now.'; }
         if (chance(s, 0.65)) return 'The police chased them off. Your land is safe.';

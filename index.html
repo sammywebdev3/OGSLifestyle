@@ -4,8 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>OGS Lifestyle</title>
-  <meta name="description" content="Ogun State life simulator — grow up, go to school, work and live across a real map of Ogun State, Nigeria.">
+  <meta name="description" content="Ogun State Lifestyle — Eko to the Gateway. From sapa to stardom in the Gateway State, on a real map of Ogun State.">
   <meta name="theme-color" content="#0b6e4f">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -25,6 +28,7 @@
 
   <nav class="tabs" id="tabs">
     <button data-tab="today" class="active">☀️ Today</button>
+    <button data-tab="hustle" hidden>🔥 Hustle</button>
     <button data-tab="life">📜 Life</button>
     <button data-tab="map">🗺️ Map</button>
     <button data-tab="education">🎓 School</button>
@@ -33,10 +37,13 @@
     <button data-tab="street">🦹 Street</button>
     <button data-tab="politics">🗳️ Politics</button>
     <button data-tab="assets">🏠 Home & Assets</button>
+    <button data-tab="store" hidden>🛍️ Store</button>
   </nav>
 
   <main id="main">
     <section class="panel active" id="panel-today"></section>
+    <section class="panel" id="panel-hustle"></section>
+    <section class="panel" id="panel-store"></section>
     <section class="panel" id="panel-life"></section>
     <section class="panel" id="panel-map">
       <div class="map-tools">
@@ -81,6 +88,9 @@
   <script src="js/engine.js"></script>
   <script src="js/life.js"></script>
   <script src="js/society.js"></script>
+  <script src="js/hustle.js"></script>
+  <script src="js/adboard.js"></script>
+  <script src="js/store.js"></script>
   <script src="js/map.js"></script>
   <script src="js/ui.js"></script>
 </body>

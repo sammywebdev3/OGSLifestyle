@@ -15,10 +15,10 @@
   const KIND_ICON = {
     university: '🎓', polytechnic: '🏛️', coe: '📘', health: '⚕️',
     secondary: '🏫', landmark: '🗿', market: '🛍️', worship: '🛐',
-    hospital: '🏥', workplace: '🏭', leisure: '🎉', prison: '🔒',
+    hospital: '🏥', workplace: '🏭', leisure: '🎉', prison: '🔒', housing: '🏡',
   };
 
-  let map, layers, meMarker, liveLayer, searchMarker, popupBuilder;
+  let map, layers, meMarker, liveLayer, searchMarker, popupBuilder, zoneLayer, adLayer;
 
   function emojiIcon(emoji, cls = '') {
     return L.divIcon({ className: '', html: `<div class="emoji-pin ${cls}">${emoji}</div>`, iconSize: [24, 24], iconAnchor: [12, 12], popupAnchor: [0, -10] });
@@ -86,6 +86,24 @@
         L.geoJSON(js[0].geojson, { style: { color: '#23408e', weight: 2, dashArray: '6 4', fill: false }, interactive: false }).addTo(map);
       }
     } catch (e) { /* offline — the game still works */ }
+  }
+
+  // Hustle Mode: the four zones (locked ones greyed out) and sponsor billboards.
+  function setOverlays(zones, unlocked, ads) {
+    if (!map) return;
+    if (!zoneLayer) { zoneLayer = L.layerGroup().addTo(map); adLayer = L.layerGroup().addTo(map); }
+    zoneLayer.clearLayers();
+    adLayer.clearLayers();
+    for (const z of zones || []) {
+      const open = unlocked(z.id);
+      L.circle([z.lat, z.lng], { radius: z.radius, color: open ? z.color : '#888', weight: 2, dashArray: open ? null : '6 6', fillColor: open ? z.color : '#555', fillOpacity: open ? 0.06 : 0.18, interactive: false }).addTo(zoneLayer);
+      L.marker([z.lat + z.radius / 111000 * 0.75, z.lng], { icon: L.divIcon({ className: '', html: `<div class="zone-label ${open ? '' : 'locked'}" style="--zc:${z.color}">${open ? '' : '🔒 '}${escapeHtml(z.name)}<small>${escapeHtml(z.theme)}${open ? '' : ' · level ' + z.unlock}</small></div>`, iconSize: [160, 34], iconAnchor: [80, 17] }), interactive: false }).addTo(zoneLayer);
+    }
+    for (const a of ads || []) {
+      L.marker([a.lat, a.lng], { icon: emojiIcon('📢'), title: a.business })
+        .bindPopup(`<h3>📢 ${escapeHtml(a.business)}</h3><p>${escapeHtml(a.tagline)}</p><p class="small">Billboard at ${escapeHtml(a.where)}${a.sample ? ' · sample ad' : ''}</p>`)
+        .addTo(adLayer);
+    }
   }
 
   function updatePlayer(s) {
@@ -192,5 +210,5 @@
     return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  root.OGS.Map = { init, updatePlayer, focus, focusMe, invalidate, openAt, loadLive, search, showSearchResult, escapeHtml, KIND_ICON };
+  root.OGS.Map = { init, setOverlays, updatePlayer, focus, focusMe, invalidate, openAt, loadLive, search, showSearchResult, escapeHtml, KIND_ICON };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

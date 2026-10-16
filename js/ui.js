@@ -9,6 +9,9 @@
   const E = root.OGS.Engine;
   const L = root.OGS.Life;
   const SO = root.OGS.Society;
+  const HU = root.OGS.Hustle;
+  const AB = root.OGS.AdBoard;
+  const ST = root.OGS.Store;
   const M = root.OGS.Map;
   const h = M.escapeHtml;
   const naira = E.naira;
@@ -19,6 +22,11 @@
   let tab = 'today';
   let mapReady = false;
   let lastMapTown = null;
+  let overlayKey = null;
+  let adTimer = null;
+  const isH = () => !!(S && S.hustle);
+  const LIFE_ONLY_TABS = ['education', 'career', 'politics'];
+  const HUSTLE_ONLY_TABS = ['hustle', 'store'];
   const clock = { running: false, speed: 1, acc: 0, saveAcc: 0 };
   const ui = {
     edu: { kind: 'all', owner: 'all', q: '' },
@@ -110,13 +118,49 @@
   function render() {
     if (!S) return;
     const t = E.TOWN[S.town];
-    setHTML($('#who'), `<b>${h(S.first)} ${h(S.last)}</b> · ${S.age} yrs · 📍${h(S.jail ? E.PLACE[S.jail.facility].name : t.name)}${S.edu.highest !== 'none' ? ' · ' + S.edu.highest : ''}`);
     const st = S.stats;
-    setHTML($('#stats'), `<div class="stat money"><div class="label"><span>Bank balance</span></div><div class="value">${naira(S.money)}</div></div>`
-      + meter('❤️ Health', st.health) + meter('😊 Happiness', st.happiness) + meter('🧠 Smarts', st.smarts) + meter('✨ Looks', st.looks));
+    applyModeTabs();
+    if (isH()) {
+      const lv = HU.levelInfo(S);
+      setHTML($('#who'), `<b>${h(S.first)} ${h(S.last)}</b> · ⭐ L${lv.level} ${h(lv.title)} · 📍${h(S.jail ? E.PLACE[S.jail.facility].name : t.name)}`);
+      const sp = HU.sapa(S);
+      setHTML($('#stats'), `<div class="stat money"><div class="label"><span>Bank balance</span></div><div class="value">${naira(S.money)}</div></div>`
+        + meter('❤️ Health', st.health) + meter('😊 Morale', st.happiness) + meter('🔥 Clout', S.hustle.clout, 'var(--brand-2)') + meter(sp >= 70 ? '🪫 Sapa — trek mode!' : '🪫 Sapa meter', sp, sp >= 70 ? 'var(--bad)' : sp >= 40 ? 'var(--accent)' : 'var(--good)'));
+    } else {
+      setHTML($('#who'), `<b>${h(S.first)} ${h(S.last)}</b> · ${S.age} yrs · 📍${h(S.jail ? E.PLACE[S.jail.facility].name : t.name)}${S.edu.highest !== 'none' ? ' · ' + S.edu.highest : ''}`);
+      setHTML($('#stats'), `<div class="stat money"><div class="label"><span>Bank balance</span></div><div class="value">${naira(S.money)}</div></div>`
+        + meter('❤️ Health', st.health) + meter('😊 Happiness', st.happiness) + meter('🧠 Smarts', st.smarts) + meter('✨ Looks', st.looks));
+    }
     renderClock();
     renderPanel(tab);
     if (mapReady && lastMapTown !== S.town) { M.updatePlayer(S); lastMapTown = S.town; }
+    updateOverlays();
+  }
+
+  function applyModeTabs() {
+    const hustle = isH();
+    document.querySelectorAll('#tabs button').forEach((b) => {
+      b.hidden = (hustle && LIFE_ONLY_TABS.includes(b.dataset.tab)) || (!hustle && HUSTLE_ONLY_TABS.includes(b.dataset.tab));
+    });
+    const cur = document.querySelector(`#tabs button[data-tab="${tab}"]`);
+    if (cur && cur.hidden) switchTab('today');
+  }
+
+  function updateOverlays() {
+    if (!mapReady) return;
+    const ads = isH() && !ST.adsRemoved() ? AB.active() : [];
+    const key = isH() ? `h${HU.levelInfo(S).level}:${ads.length}` : 'life';
+    if (key === overlayKey) return;
+    overlayKey = key;
+    if (isH()) M.setOverlays(HU.ZONES, (id) => HU.zoneUnlocked(S, id), ads);
+    else M.setOverlays([], () => true, []);
+  }
+
+  // The same sponsor all game-day, so the banner doesn't flicker.
+  function sponsorOfDay() {
+    if (ST.adsRemoved()) return null;
+    const ads = AB.active();
+    return ads.length ? ads[HU.dayKey(S) % ads.length] : null;
   }
 
   function renderClock() {
@@ -131,7 +175,7 @@
   }
 
   function renderPanel(name) {
-    const fn = { today: renderToday, life: renderLife, education: renderEducation, career: renderCareer, people: renderPeople, street: renderStreet, politics: renderPolitics, assets: renderAssets }[name];
+    const fn = { today: renderToday, hustle: renderHustle, store: renderStore, life: renderLife, education: renderEducation, career: renderCareer, people: renderPeople, street: renderStreet, politics: renderPolitics, assets: renderAssets }[name];
     if (fn) setHTML($('#panel-' + name), fn());
   }
 
@@ -148,6 +192,13 @@
     if (S.jail) {
       const yrs = (S.jail.daysLeft / E.DAYS_PER_YEAR).toFixed(1);
       status = `<div class="banner bad">⛓️ You are serving time at <b>${h(E.PLACE[S.jail.facility].name)}</b> — ${S.jail.daysLeft} days left (≈${yrs} yrs). Behaviour: ${Math.round(S.jail.behaviour)}/100${S.jail.gang ? ' · 🐍 gang member' : ''}</div>`;
+    } else if (isH()) {
+      const hu = S.hustle;
+      const house = HU.HOUSES[hu.house];
+      const rent = HU.weeklyRent(S);
+      status = `<div class="banner ${hu.lockedOut ? 'bad' : ''}">${hu.lockedOut ? `🔒 <b>LOCKED OUT</b> of your ${h(house.name)} — you owe ${naira(hu.owed)}. Pay it in Home & Assets.` : `🏠 ${h(house.name)} · ${rent ? `rent ${naira(rent)} due Saturday` : 'you own it — no rent!'}${hu.owed ? ` · <span class="req">owing ${naira(hu.owed)}</span>` : ''}`}${HU.inSapa(S) ? ' · <span class="req">🪫 SAPA: trek only, clubs won\'t let you in</span>' : ''}${S.heat > 20 ? ` · <span class="req">🚨 Police heat ${Math.round(S.heat)}</span>` : ''}</div>`;
+      const ad = sponsorOfDay();
+      if (ad) status += `<div class="sponsor" style="--ac:${ad.color}"><span class="pill">Sponsored</span> <b>${h(ad.business)}</b> — ${h(ad.tagline)}</div>`;
     } else {
       const where = S.livingWithParents ? `at your parents' house in ${h(E.TOWN[S.homeTown].name)}` : `in your own place in ${h(E.TOWN[S.town].name)}`;
       const bills = L.weeklyBills(S);
@@ -160,15 +211,89 @@
       <div class="needs">${meter('🍲 Hunger', n.hunger)}${meter('⚡ Energy', n.energy)}${meter('🚿 Hygiene', n.hygiene)}${meter('🎮 Fun', n.fun)}${meter('💬 Social', n.social)}</div>
       <p class="small muted" style="margin:8px 0 0">${S.auto ? 'Auto-routine is ON: press ▶ and your character eats, sleeps, goes to school/work by themself. You can still do anything yourself.' : 'Auto-routine is OFF: the clock runs and you decide everything. Let your needs hit zero and you suffer.'}</p></div>
       ${status}`;
-    for (const [g, list] of Object.entries(groups)) {
-      html += `<h2>${h(g)}</h2><div class="acts">${actionButtons(list)}</div>`;
+    const order = Object.keys(groups).sort((a, b) => (b === 'Hustle') - (a === 'Hustle'));
+    for (const g of order) {
+      html += `<h2>${g === 'Hustle' ? '🔥 Hustle' : h(g)}</h2><div class="acts">${actionButtons(groups[g])}</div>`;
+      if (g === 'Hustle') {
+        const why = HU.canDouble(S);
+        html += `<div class="row" style="margin-top:8px"><button class="small secondary" data-act="watch-ad" ${why ? `disabled title="${h(why)}"` : ''}>📺 Watch ad: double today's hustle${why ? '' : ` (+${naira(S.hustle.lastEarn.amount)})`}</button><button class="small secondary" data-tab="hustle">More hustle details →</button></div>`;
+      }
     }
-    if (!S.jail) html += `<h2>Go out</h2><div class="row"><button class="secondary" data-tab="map">🗺️ Visit places on the map</button><button class="secondary" data-tab="street">🦹 The streets</button><button class="secondary" data-tab="politics">🗳️ Politics</button></div>`;
+    if (!S.jail) html += `<h2>Go out</h2><div class="row"><button class="secondary" data-tab="map">🗺️ Visit places on the map</button><button class="secondary" data-tab="street">🦹 The streets</button>${isH() ? '' : '<button class="secondary" data-tab="politics">🗳️ Politics</button>'}</div>`;
     // Today's diary
     const todays = [];
     for (let i = S.log.length - 1; i >= 0 && todays.length < 8; i--) { if (S.log[i].kind === 'year') break; todays.push(S.log[i]); }
     if (todays.length) html += '<h2>Recent</h2>' + todays.map((l) => `<div class="log-item ${l.kind}">${h(l.text)}</div>`).join('');
     return html;
+  }
+
+  // ----- hustle -----
+
+  function renderHustle() {
+    if (!isH()) return '';
+    const hu = S.hustle;
+    const lv = HU.levelInfo(S);
+    const p = HU.adirePrices(S);
+    const acts = Object.fromEntries(L.listActions(S).map((a) => [a.id, a]));
+    const pick = (...ids) => actionButtons(ids.map((id) => acts[id]).filter(Boolean));
+    const pct = Math.round(lv.progress * 100);
+    let html = `<div class="card"><div class="row between"><h2 style="margin:0">⭐ Level ${lv.level}: ${h(lv.title)}</h2><span class="pill">Clout ${Math.round(hu.clout)} · ${hu.followers.toLocaleString('en-US')} followers</span></div>
+      <p class="small muted">Clout + Money = Your Level. Score ${naira(lv.score)}${lv.next ? ` · next: <b>${h(lv.nextTitle)}</b> at ${naira(lv.next)}` : ' · max level!'}</p>
+      <div class="bar"><i style="width:${pct}%;background:var(--brand-2)"></i></div>
+      <div class="zones">${HU.ZONES.map((z) => { const open = HU.zoneUnlocked(S, z.id); return `<div class="zone ${open ? '' : 'locked'}" style="--zc:${z.color}"><b>${open ? '🟢' : '🔒'} ${h(z.name)}</b><span>${h(z.theme)} · ${open ? 'open' : 'level ' + z.unlock}</span><small>${h(z.blurb)}</small></div>`; }).join('')}</div></div>`;
+
+    const why = HU.canDouble(S);
+    html += `<div class="card row between"><span>📺 <b>Watch an ad to double your last hustle income</b> (once a day).</span><button data-act="watch-ad" ${why ? `disabled title="${h(why)}"` : ''}>${why ? h(why) : `Double +${naira(hu.lastEarn.amount)}`}</button></div>`;
+
+    html += `<div class="grid">
+      <div class="card"><h3>🧵 Adire seller</h3><p class="small muted">Buy from the dyers at Itoku, sell around Kuto & Panseke, or carry it to Lagos for the best price.</p>
+        <dl class="kv small"><dt>Stock</dt><dd>${hu.adire} piece(s)${hu.adire ? ` (avg cost ${naira(hu.adireCost)})` : ''}</dd><dt>Today at Itoku</dt><dd>${naira(p.buy)}/pc</dd><dt>Kuto/Panseke</dt><dd>${naira(p.local)}/pc</dd><dt>Lagos (Balogun)</dt><dd>${naira(p.lagos)}/pc</dd></dl>
+        <div class="acts one">${pick('adire-buy', 'adire-local', 'adire-lagos')}</div></div>
+      <div class="card"><h3>🛵 Okada rider</h3><p class="small muted">Rush hours (6–9am, 4–7pm) pay best. Watch out for TRACE and potholes.</p>
+        <dl class="kv small"><dt>Bike</dt><dd>${E.hasAssetKind(S, 'motorbike') ? 'Your own Bajaj 💪' : 'Hired (₦3,000 daily balance)'}</dd>${hu.impound ? `<dt>Impounded</dt><dd class="req">${hu.impound} day(s)</dd>` : ''}</dl>
+        <div class="acts one">${pick('okada-ride')}</div>
+        ${E.hasAssetKind(S, 'motorbike') ? '' : `<button class="small secondary" data-act="buy" data-id="motorbike" ${S.money < E.ASSET.motorbike.price ? 'disabled' : ''}>Buy your own bike (${naira(E.ASSET.motorbike.price)})</button>`}</div>
+      <div class="card"><h3>🎥 Influencer / TikToker</h3><p class="small muted">Grow followers; brand deals pay every Saturday from 1,000 followers.</p>
+        <dl class="kv small"><dt>Followers</dt><dd>${hu.followers.toLocaleString('en-US')}</dd><dt>Phone</dt><dd>${E.hasAssetKind(S, 'phone') ? '✅' : '❌ buy one in Home & Assets'}</dd></dl>
+        <div class="acts one">${pick('content-olumo', 'content-skit', 'content-adire')}</div></div>
+    </div>`;
+
+    html += '<h2>👔 Drip</h2><div class="grid">';
+    for (const d of HU.DRIP) {
+      const own = hu.drip.includes(d.id);
+      html += `<div class="card"><h3>${h(d.name)}</h3><p class="small muted">${naira(d.price)} · clout +${d.clout}</p>${own ? '<span class="pill ok">Owned</span>' : `<button class="small" data-act="drip" data-id="${d.id}" ${S.money < d.price ? 'disabled' : ''}>Buy</button>`}</div>`;
+    }
+    return html + '</div>';
+  }
+
+  function renderStore() {
+    let html = `<div class="card"><h2 style="margin-top:0">🛍️ Store</h2><p class="small">${ST.available() ? 'Purchases are processed securely by the payment provider.' : '⚠️ Payments are not connected in this version yet, so nothing can be bought or charged. In the Android release these buttons use Google Play Billing.'}</p></div><div class="grid">`;
+    for (const p of ST.PRODUCTS) {
+      const done = p.removeAds && ST.adsRemoved();
+      html += `<div class="card"><h3>${h(p.name)}</h3><p class="small muted">${h(p.blurb)}</p><p><b>${h(p.price)}</b></p>${done ? '<span class="pill ok">Active</span>' : `<button class="small" data-act="store-buy" data-id="${p.id}" ${ST.available() ? '' : 'disabled'}>Buy</button>`}</div>`;
+    }
+    html += `</div><h2>📢 Ads Board</h2><p class="small muted">These billboards show on the map, in "watch ad" breaks and on the Today screen. ${h(AB.contact)}</p><div class="grid">`;
+    for (const a of AB.active()) {
+      html += `<div class="card" style="border-top:4px solid ${a.color}"><h3>${h(a.business)}</h3><p class="small">${h(a.tagline)}</p><p class="small muted">Billboard at ${h(a.where)} · until ${h(a.end)}${a.sample ? ' · sample' : ''}</p>${mapBtn(a.lat, a.lng)}</div>`;
+    }
+    return html + '</div>';
+  }
+
+  function showAd() {
+    const why = HU.canDouble(S);
+    if (why) return toast(why, 'bad');
+    const ad = AB.random() || { business: 'OGS Lifestyle', tagline: 'From Sapa to Stardom in the Gateway State', color: '#0b6e4f' };
+    let left = 5;
+    openModal(`<p class="small muted">Advertisement</p><div class="ad-card" style="--ac:${ad.color}"><h2>📢 ${h(ad.business)}</h2><p>${h(ad.tagline)}</p></div>
+      <div class="choices"><button id="ad-claim" data-act="claim-ad" disabled>Reward in ${left}s…</button></div>`);
+    clearInterval(adTimer);
+    adTimer = setInterval(() => {
+      left--;
+      const b = $('#ad-claim');
+      if (!b) { clearInterval(adTimer); return; }
+      if (left <= 0) { clearInterval(adTimer); b.disabled = false; b.textContent = `Claim +${naira(S.hustle.lastEarn.amount)}`; }
+      else b.textContent = `Reward in ${left}s…`;
+    }, 1000);
   }
 
   // ----- life -----
@@ -421,15 +546,35 @@
 
   // ----- home & assets -----
 
+  function renderHustleHome() {
+    const hu = S.hustle;
+    let html = `<h2>🏘️ Your house</h2><div class="card"><p><b>${h(HU.HOUSES[hu.house].name)}</b>${hu.ownsHouse === hu.house ? ' — you own it!' : ` — ${naira(HU.HOUSES[hu.house].weekly)}/week, due every Saturday.`}</p>
+      ${hu.owed ? `<p class="req">${hu.lockedOut ? '🔒 Locked out! ' : ''}You owe ${naira(hu.owed)}.</p><button class="small" data-act="arrears">Pay ${naira(hu.owed)} arrears</button>` : ''}</div><div class="grid">`;
+    for (const [id, hs] of Object.entries(HU.HOUSES)) {
+      const here = hu.house === id;
+      html += `<div class="card"><h3>${h(hs.name)}</h3><p class="small muted">${h(hs.blurb)}</p><p class="small">${naira(hs.weekly)}/week · clout +${hs.clout}</p>
+        ${here ? '<span class="pill ok">You live here</span>' : `<button class="small" data-act="house-move" data-id="${id}">Rent (${naira(hs.weekly * 3 + hu.owed)} upfront)</button>`}
+        ${hs.buy && hu.ownsHouse !== id ? `<button class="small secondary" data-act="house-buy" data-id="${id}" ${S.money < hs.buy ? 'disabled' : ''}>Buy for ${naira(hs.buy)}</button>` : ''}</div>`;
+    }
+    html += `</div><h2>🏗️ Build your own house</h2><div class="card"><p>Buy land in Obafemi-Owode (${naira(E.ASSET['land-owode'].price)}, in the shop below), then build for ₦10,000,000. Your family back home will finally stop asking "when will you build house?"</p>
+      ${hu.houseBuilt ? '<span class="pill ok">House built 🏠</span>' : '<button class="small" data-act="build-house">Build house (₦10,000,000)</button>'}</div>`;
+    return html;
+  }
+
   function renderAssets() {
     const towns = D.TOWNS.slice().sort((a, b) => a.name.localeCompare(b.name));
+    if (isH()) return renderHustleHome() + renderShop();
     let html = `<h2>🏘️ Housing</h2><div class="card">
       <p>${S.livingWithParents ? `You live with your parents in ${h(E.TOWN[S.homeTown].name)} — free rent!` : `You rent in ${h(E.TOWN[S.town].name)}. Rent, food & bills ≈ ${naira(L.weeklyBills(S))} every Saturday.`}</p>
       <div class="row"><select id="move-town">${towns.map((t) => `<option value="${t.id}" ${t.id === S.town ? 'selected' : ''}>${h(t.name)} — rent ${naira(t.rent)}/yr</option>`).join('')}</select>
       <button class="small" data-act="move" ${S.age < 16 ? 'disabled' : ''}>Move here</button>
       ${!S.livingWithParents ? '<button class="small secondary" data-act="movehome">Move back with parents</button>' : ''}</div></div>`;
 
-    html += '<h2>🏠 What you own</h2>';
+    return html + renderShop() + renderJapa();
+  }
+
+  function renderShop() {
+    let html = '<h2>🏠 What you own</h2>';
     if (!S.assets.length) html += '<p class="muted">Nothing yet.</p>';
     else html += '<div class="card">' + S.assets.map((a) => `<div class="prog"><span><b>${h(E.ASSET[a.id].name)}</b><br><span class="small muted">Worth ${naira(a.value)} · bought ${a.boughtYear}</span></span><button class="small secondary" data-act="sell" data-uid="${a.uid}">Sell (${naira(Math.round(a.value * 0.9))})</button></div>`).join('') + '</div>';
     html += '<h2>🛒 Shop</h2><div class="grid">';
@@ -440,6 +585,11 @@
     }
     html += '</div>';
 
+    return html;
+  }
+
+  function renderJapa() {
+    let html = '';
     const jr = E.japaRequirement(S);
     html += `<h2>✈️ Japa</h2><div class="card"><p>Relocate abroad and end this life story on a high. Needs proof of funds of ${naira(jr.need)}, a degree/HND (or coding skill) and age 21+. Visa, flights & settling-in cost ₦8,000,000.</p>
       ${jr.ok ? '' : `<p class="req">${h(jr.msg)}</p>`}<button data-act="japa" ${jr.ok ? '' : 'disabled'}>Japa now</button></div>`;
@@ -466,7 +616,8 @@
       const insts = D.INSTITUTIONS.filter((i) => i.town === id).map((i) => i.short);
       return `<h3>${h(t.name)}</h3><span class="pill">${h(E.lgaName(t.lga))} LGA</span><p>${h(t.blurb)}</p>
         <p class="small">Rent ≈ ${naira(t.rent)}/yr · ${km(here, t)} km from you${insts.length ? '<br>Institutions: ' + h(insts.join(', ')) : ''}</p>
-        ${id !== S.town || S.livingWithParents ? `<button class="small" data-act="move-to" data-id="${id}" ${S.age < 16 ? 'disabled' : ''}>Move here</button>` : '<span class="pill ok">You live here</span>'}`;
+        ${isH() ? (HU.ZONE_OF[id] ? `<span class="pill ${HU.zoneUnlocked(S, HU.ZONE_OF[id]) ? 'ok' : 'no'}">${h(HU.ZONES.find((z) => z.id === HU.ZONE_OF[id]).name)}</span>` : '<span class="pill">Future update</span>')
+          : id !== S.town || S.livingWithParents ? `<button class="small" data-act="move-to" data-id="${id}" ${S.age < 16 ? 'disabled' : ''}>Move here</button>` : '<span class="pill ok">You live here</span>'}`;
     }
     if (type === 'inst') {
       const i = E.INST[id];
@@ -517,7 +668,7 @@
     if (S.ended || !S.alive) return showEnding();
     const ev = S.events[0];
     if (!ev) return closeModal();
-    openModal(`<p class="small muted">${L.dateLabel(S)} · ${L.timeLabel(S)}</p><h2>${h(ev.title)}</h2><p>${h(ev.text)}</p><div class="choices">${ev.choices.map((c, i) => `<button data-act="choose" data-i="${i}">${h(c.label)}</button>`).join('')}</div>`);
+    openModal(`<p class="small muted">${L.dateLabel(S)} · ${L.timeLabel(S)}</p><h2>${h(ev.title)}</h2><p>${h(ev.text)}</p><div class="choices">${ev.choices.map((c, i) => `<button data-act="choose" data-i="${i}" ${c.disabled ? `disabled title="${h(c.disabled)}"` : ''}>${h(c.label)}${c.disabled ? `<small class="why">${h(c.disabled)}</small>` : ''}</button>`).join('')}</div>`);
   }
 
   function showEnding() {
@@ -533,32 +684,54 @@
   function showNewGame() {
     clock.running = false;
     const towns = D.TOWNS.slice().sort((a, b) => a.name.localeCompare(b.name));
+    const villages = towns.filter((x) => x.id !== 'abeokuta');
     const bg = Object.entries(E.WEALTH);
     openModal(`<h2>✨ A new life in Ogun State</h2>
       <form class="form" id="new-form">
-        <div class="seg"><label><input type="radio" name="gender" value="male" checked>👦🏾 Boy</label><label><input type="radio" name="gender" value="female">👧🏾 Girl</label></div>
+        <div class="seg mode-seg"><label><input type="radio" name="mode" value="hustle" checked>🔥 Hustle Mode</label><label><input type="radio" name="mode" value="life">👶 Life Mode</label></div>
+        <p class="small muted" id="mode-desc"></p>
+        <div class="seg"><label><input type="radio" name="gender" value="male" checked>👦🏾 Guy</label><label><input type="radio" name="gender" value="female">👧🏾 Babe</label></div>
         <label>First name<input name="first" required maxlength="20" placeholder="e.g. Ayomide"></label>
         <label>Surname<input name="last" required maxlength="20" placeholder="e.g. Odusanya"></label>
-        <label>Hometown<select name="town">${towns.map((t) => `<option value="${t.id}" ${t.id === 'abeokuta' ? 'selected' : ''}>${h(t.name)} (${h(E.lgaName(t.lga))})</option>`).join('')}</select></label>
-        <label>Born into…<select name="wealth" id="bg-select"><option value="">🎲 Let fate decide</option>${bg.map(([k, w]) => `<option value="${k}">${h(w.label)}</option>`).join('')}</select></label>
-        <p class="small muted" id="bg-desc">Fate will pick: poor, middle-class, comfortable, rich or a politician's family.</p>
-        <div class="row"><button type="button" class="secondary" data-ui="random-name">🎲 Random name</button><button type="submit" style="flex:1">Be born 👶🏾</button></div>
+        <div id="hustle-fields"><label>Your village (where your family lives)<select name="village">${villages.map((x) => `<option value="${x.id}" ${x.id === 'ogbere' ? 'selected' : ''}>${h(x.name)} (${h(E.lgaName(x.lga))})</option>`).join('')}</select></label></div>
+        <div id="life-fields" hidden>
+          <label>Hometown<select name="town">${towns.map((x) => `<option value="${x.id}" ${x.id === 'abeokuta' ? 'selected' : ''}>${h(x.name)} (${h(E.lgaName(x.lga))})</option>`).join('')}</select></label>
+          <label>Born into…<select name="wealth" id="bg-select"><option value="">🎲 Let fate decide</option>${bg.map(([k, w]) => `<option value="${k}">${h(w.label)}</option>`).join('')}</select></label>
+          <p class="small muted" id="bg-desc">Fate will pick: poor, middle-class, comfortable, rich or a politician's family.</p>
+        </div>
+        <div class="row"><button type="button" class="secondary" data-ui="random-name">🎲 Random name</button><button type="submit" style="flex:1" id="born-btn">Start the hustle 🚌</button></div>
         ${S ? '<button type="button" class="secondary" data-ui="close">Cancel</button>' : ''}
       </form>`);
+    const form = $('#new-form');
+    const syncMode = () => {
+      const hustle = form.querySelector('input[name=mode]:checked').value === 'hustle';
+      $('#hustle-fields').hidden = !hustle;
+      $('#life-fields').hidden = hustle;
+      $('#born-btn').textContent = hustle ? 'Start the hustle 🚌' : 'Be born 👶🏾';
+      $('#mode-desc').textContent = hustle
+        ? `"Eko to the Gateway": you just moved from your village to Abeokuta with ${naira(HU.START_CASH)}. Hustle, pay rent every Saturday, avoid TRACE, spray money at owambes, and go from sapa to stardom.`
+        : 'Live a whole life from birth to old age: school, WAEC/JAMB, university, NYSC, careers, crime, politics and family.';
+    };
+    form.querySelectorAll('input[name=mode]').forEach((r) => r.addEventListener('change', syncMode));
+    syncMode();
     $('#bg-select').addEventListener('change', (ev) => {
       const w = E.WEALTH[ev.target.value];
       $('#bg-desc').textContent = w ? w.desc : 'Fate will pick: poor, middle-class, comfortable, rich or a politician\'s family.';
     });
-    $('#new-form').addEventListener('submit', (ev) => {
+    form.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const fd = new FormData(ev.target);
-      S = E.newGame({ first: fd.get('first').trim(), last: fd.get('last').trim(), gender: fd.get('gender'), town: fd.get('town'), wealth: fd.get('wealth') || undefined });
+      const base = { first: fd.get('first').trim(), last: fd.get('last').trim(), gender: fd.get('gender') };
+      S = fd.get('mode') === 'hustle'
+        ? HU.newHustleGame({ ...base, village: fd.get('village') })
+        : E.newGame({ ...base, town: fd.get('town'), wealth: fd.get('wealth') || undefined });
       lastMapTown = null;
+      overlayKey = null;
       closeModal();
       switchTab('today');
       afterAction();
       if (mapReady) M.focusMe(S);
-      toast('Press ▶ to start the clock.', 'good');
+      toast(isH() ? 'Pick a hustle, then press ▶ to start the clock.' : 'Press ▶ to start the clock.', 'good');
     });
   }
 
@@ -611,6 +784,8 @@
       if (!mapReady && root.L) {
         M.init($('#map'), popup);
         mapReady = true;
+        overlayKey = null;
+        if (S) updateOverlays();
         if (S) { M.updatePlayer(S); lastMapTown = S.town; M.focusMe(S); }
       } else if (!root.L) {
         $('#map').innerHTML = '<p style="padding:16px">The map library could not load. Check your internet connection and reload.</p>';
@@ -650,8 +825,20 @@
       case 'raise': return result(E.askRaise(S));
       case 'findlove': return result(E.findLove(S));
       case 'interact': return result(E.interact(S, d.person, d.action));
-      case 'buy': return result(E.buyAsset(S, d.id));
-      case 'sell': return result(E.sellAsset(S, d.uid));
+      case 'buy': return result(isH() ? HU.buyAsset(S, d.id) : E.buyAsset(S, d.id));
+      case 'sell': {
+        const a = S.assets.find((x) => x.uid === d.uid);
+        if (isH() && a && a.living) S.hustle.ownsHouse = null; // sold the house you live in: rent is back
+        return result(E.sellAsset(S, d.uid));
+      }
+      case 'watch-ad': return showAd();
+      case 'claim-ad': { const r = HU.doubleLast(S); closeModal(); return result(r); }
+      case 'drip': return result(HU.buyDrip(S, d.id));
+      case 'house-move': if (confirm('Move house? You pay the first week plus agent & caution fees now.')) result(HU.moveHouse(S, d.id)); return;
+      case 'house-buy': if (confirm('Buy this house outright?')) result(HU.buyHouse(S, d.id)); return;
+      case 'arrears': return result(HU.payArrears(S));
+      case 'build-house': return result(HU.buildHouse(S));
+      case 'store-buy': ST.purchase(S, d.id).then(result); return;
       case 'move': return result(E.moveOut(S, $('#move-town').value));
       case 'move-to': closePopups(); return result(E.moveOut(S, d.id));
       case 'movehome': return result(E.moveBackHome(S));
@@ -675,7 +862,7 @@
       case 'save': if (S) exportSave(); return;
       case 'load': $('#load-file').click(); return;
       case 'new': showNewGame(); return;
-      case 'close': closeModal(); return;
+      case 'close': clearInterval(adTimer); closeModal(); return;
       case 'random-name': randomName(); return;
     }
   }
@@ -770,6 +957,9 @@
 
   function boot() {
     bind();
+    if ('serviceWorker' in navigator && /^(https:|http:\/\/localhost|http:\/\/127\.)/.test(location.href)) {
+      navigator.serviceWorker.register('sw.js').catch(() => { /* offline support is optional */ });
+    }
     S = loadSaved();
     if (S) {
       render();

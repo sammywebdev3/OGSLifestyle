@@ -208,6 +208,23 @@ main { flex: 1; width: 100%; max-width: 1000px; margin: 0 auto; padding: 0 16px 
 .act-name { font-size: 13.5px; line-height: 1.25; }
 .act-meta { font-size: 11.5px; color: var(--muted); font-weight: 500; }
 
+/* hustle mode */
+.zones { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-top: 12px; }
+.zone { border: 1px solid var(--line); border-left: 4px solid var(--zc); border-radius: 8px; padding: 8px 10px; display: grid; gap: 2px; font-size: 13px; }
+.zone span { color: var(--muted); }
+.zone small { color: var(--muted); }
+.zone.locked { opacity: .6; border-left-color: #999; }
+.sponsor { margin: 0 0 10px; padding: 8px 12px; border-radius: 8px; font-size: 13px; background: var(--card); border: 1px dashed var(--ac); }
+.ad-card { border-radius: 12px; padding: 18px; color: #fff; background: linear-gradient(135deg, var(--ac), #1d2320); margin: 8px 0; }
+.ad-card h2 { margin: 0 0 6px; }
+.acts.one { grid-template-columns: 1fr; margin: 8px 0; }
+.choices button small.why { display: block; font-weight: 500; font-size: 12px; opacity: .85; }
+.zone-label { text-align: center; font-weight: 800; font-size: 12px; color: var(--zc); text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; line-height: 1.1; }
+.zone-label small { display: block; font-weight: 600; font-size: 10px; color: #333; }
+.zone-label.locked { color: #666; }
+.mode-seg label { font-weight: 700; }
+button[hidden] { display: none !important; }
+
 /* modal */
 .modal { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .modal[hidden] { display: none; }

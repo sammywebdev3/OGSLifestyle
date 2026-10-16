@@ -6,7 +6,12 @@ const E = require('../js/engine.js');
 
 function clearEvents(s, choice = 0) {
   let guard = 0;
-  while (s.events.length && guard++ < 50) E.resolveEvent(s, Math.min(choice, s.events[0].choices.length - 1));
+  while (s.events.length && guard++ < 50) {
+    const ch = s.events[0].choices;
+    let i = Math.min(choice, ch.length - 1);
+    if (ch[i].disabled) i = ch.findIndex((c) => !c.disabled);
+    E.resolveEvent(s, i < 0 ? 0 : i);
+  }
 }
 
 function growUp(s, age) {

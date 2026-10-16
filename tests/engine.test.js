@@ -3,8 +3,13 @@ const assert = require('node:assert');
 const D = require('../js/data.js');
 const E = require('../js/engine.js');
 
+function firstChoice(ev) {
+  const i = ev.choices.findIndex((c) => !c.disabled);
+  return i < 0 ? 0 : i;
+}
+
 function clearEvents(s) {
-  while (s.events.length) E.resolveEvent(s, 0);
+  while (s.events.length) E.resolveEvent(s, firstChoice(s.events[0]));
 }
 
 function ageTo(s, age) {

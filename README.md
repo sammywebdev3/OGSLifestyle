@@ -1,4 +1,4 @@
-# OGS Lifestyle 🇳🇬
+# OGS Lifestyle — Eko to the Gateway 🇳🇬
 
 A life simulator set in **Ogun State, Nigeria**. Inspired by Lagos-style life sims, but you play on a
 **real map**. You're born in an Ogun town, go through primary and secondary school, write WAEC and JAMB,
@@ -17,6 +17,68 @@ npm start            # or: python3 -m http.server 8080
 You can also open `index.html` directly, or host the folder on GitHub Pages
 (Settings → Pages → deploy from branch).
 The map and live data need an internet connection.
+
+## 🔥 Hustle Mode: "Eko to the Gateway" (MVP)
+
+*"From Sapa to Stardom in the Gateway State."* You've just moved from your village to Abeokuta with
+**₦50,000** and a 1-room self-contain. Your goal is to become the biggest name in Ogun State.
+Each day runs **morning → hustle → evening → lifestyle**.
+
+- **3 hustles:**
+  - **Adire seller:** buy at Itoku and sell around Kuto/Panseke. You can also carry stock to Lagos
+    for the best price, but watch for LASTMA. Prices change every day.
+  - **Okada rider:** hire a bike (₦3,000 daily balance) or buy your own. Rush hours pay best.
+    TRACE stops you, potholes throw you off.
+  - **Influencer:** shoot content at Olumo Rock or skits in your area, sell adire online, and get
+    brand deals every Saturday from 1,000 followers.
+- **Watch ad to double hustle:** once a day, a 5-second sponsor ad doubles your last hustle income.
+- **Sapa meter:** when money is low you trek instead of riding, clubs turn you away, and your
+  partner "bills" you.
+- **Weekly rent:** rent is due every Saturday. Miss it twice and the landlord **locks you out**:
+  you sleep at the motor park until you pay the arrears.
+- **TRACE / LASTMA stops:** bribe, run, or take the fine. They can impound your bike.
+- **Family pressure:** on Sundays your family back home calls: *"When will you build house?"*
+  Send money or your morale drops.
+- **Saturday Owambe:** spray money for clout and followers and a chance at big contracts. Skip it
+  and you lose clout. You'll need aso-oke to look the part.
+- **Festivals:** the Egungun chase in Abeokuta, and the Ojude Oba mission to sell adire to the
+  Ijebu-Ode crowd.
+- **Level up:** Clout + Money = your level, in 14 ranks from *JJC (Johnny Just Come)* to *Ogun State
+  legend*.
+  - The 4 map zones open with your level: **Abeokuta** (capital, open from the start),
+    **Ijebu** (luxury, level 5), **Sagamu/Remo** (industry, level 7) and **Ota/Agbara**
+    (hustle, level 9).
+- **Spend to level up:**
+  - Food: ofada rice & ayamase, lafun, ikokore.
+  - Drip: adire, Anago, corporate, aso-oke.
+  - House: face-me-I-face-you → self-contain → **duplex in Ibara GRA**.
+  - Ride: Benz.
+  - Land in Obafemi-Owode (₦2M), then **build your house** (₦10M).
+- **Transport:** trek, keke, okada, danfo, your own bike or car, or call an Uber/Bolt.
+
+### Monetization hooks (not live yet)
+
+- **Ads Board** (`js/adboard.js`): billboards appear on the map, in ad breaks and on the Today
+  screen. Each ad runs from a start date to an end date, so a paid slot has a minimum run time.
+  The entries in the file are **samples**. A live version needs a small backend where businesses
+  book and pay for slots.
+- **Store** (`js/store.js`): Ise Owo Pack (₦500 → ₦200k), Remove Ads (₦1,000). Purchases go through
+  an `OGS.Payments` adapter, such as Google Play Billing in the Android build or
+  Paystack/Flutterwave on the web. **None is connected yet, so nothing can be charged.**
+- **Rewarded ads:** the "double hustle" ad is simulated with sponsor billboards. In the Android
+  build you'd swap in AdMob rewarded ads.
+
+### Android
+
+The game is an installable **PWA**: it has a manifest, icons and an offline service worker, and
+the whole app is well under 1 MB. On Android, open it in Chrome and tap **Add to Home screen**.
+There are two ways to get it into the Play Store:
+
+- Wrap it as a Trusted Web Activity (e.g. with Bubblewrap).
+- Wrap it with Capacitor (needed for AdMob and Play Billing).
+
+The design doc's Unity 3D / low-poly version would be a separate rebuild. The game rules here
+(`js/hustle.js`, `js/life.js`) can be its spec, and their tests can be its test cases.
 
 ## How it plays
 
@@ -108,6 +170,9 @@ and the life-sim side moves on: school years, WAEC/JAMB, promotions, ageing and 
 | `js/engine.js` | Core life-sim rules (years, school, jobs, family, events). Pure functions with no DOM |
 | `js/life.js` | Daily clock, needs, actions, auto-routine, weekly pay/rent, street encounters |
 | `js/society.js` | Crime, police, courts, prison life, connections, parties and elections |
+| `js/hustle.js` | Hustle Mode: 3 hustles, sapa, clout & levels, rent lock-out, TRACE, owambe, zones |
+| `js/adboard.js`, `js/store.js` | Sponsor billboards and the store (payments adapter hook) |
+| `sw.js`, `manifest.webmanifest`, `icons/` | Installable, offline-capable PWA |
 | `js/map.js` | Leaflet map, live OSM layer and search |
 | `js/ui.js` | Rendering and input handling |
 | `tests/` | Engine tests (`npm test`, Node 18+) |

@@ -40,7 +40,7 @@
   }
   function dailyPay(s) { return s.job ? round1k((s.job.salary * 12) / E.WORKDAYS_PER_YEAR) : 0; }
   function weeklyBills(s) {
-    if (s.jail) return 0;
+    if (s.jail || s.hustle) return 0; // Hustle Mode handles its own rent
     if (!s.livingWithParents) return round1k((E.TOWN[s.town].rent * s.rentMult + 1100000) / 4);
     if (s.age >= 23 && E.parentsAlive(s)) return 75000;
     return 0;
@@ -62,7 +62,7 @@
         for (const k of NEEDS) need(s, k, -DECAY[k] * f);
       }
       // Starving or exhausted hurts.
-      s.clock.dmg = (s.clock.dmg || 0) + (s.needs.hunger <= 0 ? 0.6 * f : 0);
+      s.clock.dmg = (s.clock.dmg || 0) + (s.needs.hunger <= 0 ? 0.3 * f : 0);
       if (s.clock.dmg >= 1) { stat(s, 'health', -Math.floor(s.clock.dmg)); s.clock.dmg %= 1; }
       if (s.stats.health <= 0) { E.die(s, s.needs.hunger <= 0 ? 'starvation' : 'exhaustion'); return; }
       s.clock.min += step;
@@ -81,7 +81,22 @@
     const m = s.clock.min;
     const mins = m < WAKE ? WAKE - m : 24 * 60 - m + WAKE;
     passTime(s, mins, true);
-    return `You slept ${Math.round(mins / 60)} hours.`;
+    let msg = `You slept ${Math.round(mins / 60)} hours.`;
+    for (const fn of SLEEP_HOOKS) msg = fn(s, msg) || msg;
+    return msg;
+  }
+
+  // Extension points: gates can block an action or trip with a reason;
+  // sleep hooks can change what a night's sleep does.
+  const GATES = [];
+  const AUTO_HOOKS = [];
+  function addAutoHook(fn) { AUTO_HOOKS.push(fn); }
+  const SLEEP_HOOKS = [];
+  function addGate(fn) { GATES.push(fn); }
+  function onSleep(fn) { SLEEP_HOOKS.push(fn); }
+  function gateReason(s, what) {
+    for (const g of GATES) { const r = g(s, what); if (r) return r; }
+    return null;
   }
 
   function newDay(s) {
@@ -145,6 +160,9 @@
     { id: 'street-food', group: 'Food & rest', icon: '🥖', name: 'Bread & akara by the roadside', hours: 0.5, cost: 1500, minAge: 6, run: (s) => { need(s, 'hunger', 35); return 'Hot akara and agege bread. Simple and sweet.'; } },
     { id: 'buka', group: 'Food & rest', icon: '🍛', name: 'Amala & ewedu at a buka', hours: 1, cost: 4000, minAge: 8, run: (s) => { need(s, 'hunger', 55); need(s, 'social', 6); need(s, 'fun', 4); return 'Amala, ewedu, gbegiri and assorted meat. Heaven.'; } },
     { id: 'restaurant', group: 'Food & rest', icon: '🍽️', name: 'Eat out at a restaurant', hours: 1.5, cost: 15000, minAge: 12, run: (s) => { need(s, 'hunger', 70); need(s, 'fun', 12); need(s, 'social', 8); return 'You ate at a nice restaurant and took pictures for the gram.'; } },
+    { id: 'beg-food', group: 'Food & rest', icon: '🙏', name: 'Ask a friend for food', hours: 1, cost: 0, minAge: 6,
+      can: (s) => (s.money >= 1500 ? 'You can afford food' : (s.dayActs.begged || 0) >= 2 ? 'Your friends are tired of you today' : null),
+      run: (s) => { s.dayActs.begged = (s.dayActs.begged || 0) + 1; need(s, 'hunger', 40); need(s, 'social', -5); stat(s, 'happiness', -3); return pick(s, ['Your friend shared their eba with you. Humbling.', 'A neighbour gave you leftover rice. Sapa is real.', 'You stood near a buka until the woman took pity on you.']); } },
     { id: 'shower', group: 'Food & rest', icon: '🚿', name: 'Have a bath', hours: 0.5, cost: 0, run: (s) => { if (chance(s, 0.15)) { need(s, 'energy', -5); s.needs.hygiene = 100; return 'No running water again. You fetched water from the well before bathing.'; } s.needs.hygiene = 100; return 'Fresh and clean.'; } },
     { id: 'nap', group: 'Food & rest', icon: '😪', name: 'Take a nap', hours: 2, cost: 0, run: (s) => { need(s, 'energy', 28); return 'A sweet afternoon nap.'; } },
     { id: 'relax', group: 'Food & rest', icon: '🛋️', name: 'Relax at home', hours: 1, cost: 0, run: (s) => { need(s, 'fun', 6); need(s, 'energy', 6); return 'You relaxed and watched Africa Magic.'; } },
@@ -210,6 +228,7 @@
     else if (a.minAge && s.age < a.minAge) why = `From age ${a.minAge}`;
     else if (a.maxAge && s.age > a.maxAge) why = 'You are too old for this';
     else if (a.can && (why = a.can(s))) { /* reason set */ }
+    else if ((why = gateReason(s, { type: 'action', id: a.id }))) { /* blocked by a gate */ }
     else if (a.cost && s.money < a.cost && !kidCovered(s)) why = `Need ${naira(a.cost)}`;
     else if (a.id !== 'sleep' && s.clock.min + hrs * 60 > 26 * 60) why = 'Too late today — go and sleep';
     return { why, hours: hrs, name: a.label ? a.label(s) : a.name };
@@ -255,9 +274,11 @@
   function trip(s, placeId, mode = 'bus') {
     const p = E.PLACE[placeId];
     if (!p) return { ok: false, msg: 'Unknown place.' };
+    const blocked = gateReason(s, { type: 'trip', place: p, mode });
+    if (blocked) return { ok: false, msg: blocked };
     const q = E.tripQuote(s, p, mode);
     if (!q.ok) return q;
-    const kmh = { okada: 35, car: 45, ride: 45, keke: 25, bus: 28 }[mode] || 28;
+    const kmh = { okada: 35, car: 45, ride: 45, keke: 25, bus: 28, trek: 5, bike: 35 }[mode] || 28;
     const hrs = Math.max(1, Math.round((q.km * 2 / kmh + 1.5) * 2) / 2);
     if (s.clock.min + hrs * 60 > 26 * 60) return { ok: false, msg: 'Too late for a trip today. Go tomorrow morning.' };
     const r = E.visitPlace(s, placeId, mode);
@@ -286,11 +307,12 @@
     if (h >= 22 || (s.needs.energy < 12 && h >= 17)) return 'sleep';
     if (s.needs.energy < 15 && ok('nap')) return 'nap';
     if (s.needs.hunger < 40) {
-      for (const id of ['home-food', 'cook', 'street-food']) if (ok(id)) return id;
+      for (const id of ['home-food', 'cook', 'street-food', 'lafun', 'beg-food']) if (ok(id)) return id;
     }
     if (s.needs.hygiene < 40 && ok('shower')) return 'shower';
     if (ok('school')) return 'school';
     if (ok('work')) return 'work';
+    for (const fn of AUTO_HOOKS) { const id = fn(s, ok, h); if (id) return id; }
     if (inSchool(s) && h >= 16 && h < 20 && !s.dayActs.autoStudy && ok('study') && s.age >= 6) { s.dayActs.autoStudy = true; return 'study'; }
     if (s.needs.social < 40) for (const id of ['hangout', 'family', 'call']) if (ok(id) && !s.dayActs['auto-' + id]) { s.dayActs['auto-' + id] = true; return id; }
     if (s.needs.fun < 40) for (const id of ['play', 'street-ball', 'phone', 'hangout']) if (ok(id)) return id;
@@ -302,6 +324,8 @@
     if (!s.alive || s.ended || s.events.length) return null;
     const id = pickAuto(s);
     const r = doAction(s, id);
+    // Nothing sensible to do right now (e.g. locked out of your room): let an hour pass.
+    if (!r.ok) { idle(s, 60); return { id: 'wait', ok: true, msg: 'You waited around.' }; }
     return { id, ...r };
   }
 
@@ -403,7 +427,7 @@
     },
     preacher: {
       w: 2, when: (s) => s.age >= 14,
-      build: () => ({ title: '🙏 Prophecy', text: 'A street preacher stops you: "I see a mighty breakthrough coming! Sow a seed of ₦10,000 now!"', choices: [{ label: 'Sow the seed', value: 'sow' }, { label: 'Say "Amen" and walk away', value: 'amen' }] }),
+      build: () => ({ title: '🙏 Prophecy', text: 'A street preacher stops you: "I see a mighty breakthrough coming! Sow a seed of ₦10,000 now!"', choices: [{ label: 'Sow the ₦10,000 seed', value: 'sow' }, { label: 'Say "Amen" and walk away', value: 'amen' }] }),
       resolve(s, v) {
         if (v === 'sow') { s.money -= 10000; stat(s, 'happiness', 2); if (chance(s, 0.1)) { s.money += 100000; return 'Days later an old debtor paid you ₦100,000. Breakthrough!'; } return 'You sowed the seed. You are waiting on your breakthrough.'; }
         return '"Amen!" You walked away briskly.';
@@ -582,14 +606,14 @@
     },
     'okada-fare': {
       w: 2, when: (s) => s.age >= 12,
-      build: () => ({ title: '🛵 Okada palava', text: 'The okada man you took is demanding double the agreed fare: "Fuel don cost!"', choices: [{ label: 'Pay him', value: 'pay' }, { label: 'Argue', value: 'argue' }, { label: 'Walk away', value: 'walk' }] }),
+      build: () => ({ title: '🛵 Okada palava', text: 'The okada man you took is demanding double the agreed fare: "Fuel don cost!"', choices: [{ label: 'Pay him ₦1,000 extra', value: 'pay' }, { label: 'Argue', value: 'argue' }, { label: 'Walk away', value: 'walk' }] }),
       resolve(s, v) { if (v === 'pay') { s.money -= 1000; return 'You paid ₦1,000 extra.'; } if (v === 'argue') { if (chance(s, 0.6)) return 'Bystanders took your side. He collected the agreed fare.'; need(s, 'social', -5); s.money -= 1000; return 'He called his fellow riders. You paid.'; } if (chance(s, 0.3)) { stat(s, 'health', -6); return 'He and his friends roughed you up.'; } return 'You walked away and he cursed you in Yoruba.'; },
     },
     'family-emergency': {
       w: 1, when: (s) => s.age >= 18 && s.relations.some((r) => r.alive && ['mother', 'father', 'sibling'].includes(r.role)),
       build(s) {
         const r = pick(s, s.relations.filter((x) => x.alive && ['mother', 'father', 'sibling'].includes(x.role)));
-        return { title: '🏥 Family emergency', text: `${r.first} has been admitted to hospital and needs ₦150,000 for treatment.`, choices: [{ label: 'Pay the hospital bill', value: r.id }, { label: 'Say you don\'t have it', value: '' }] };
+        return { title: '🏥 Family emergency', text: `${r.first} has been admitted to hospital and needs ₦150,000 for treatment.`, choices: [{ label: 'Pay the ₦150,000 hospital bill', value: r.id }, { label: 'Say you don\'t have it', value: '' }] };
       },
       resolve(s, v) { if (!v) { s.karma = clamp(s.karma - 4); return 'Other relatives contributed. Some are not talking to you.'; } s.money -= 150000; const r = E._h.relation(s, v); if (r) r.closeness = clamp(r.closeness + 20); s.karma = clamp(s.karma + 5); return 'You paid the bill. They recovered and are grateful.'; },
     },
@@ -606,7 +630,7 @@
     },
     'j-extort': {
       jail: true, w: 3,
-      build: () => ({ title: '💸 "Cell rent"', text: 'The cell leader says every inmate must pay ₦5,000 "cell rent" this week.', choices: [{ label: 'Pay', value: 'pay' }, { label: 'Refuse', value: 'refuse' }] }),
+      build: () => ({ title: '💸 "Cell rent"', text: 'The cell leader says every inmate must pay ₦5,000 "cell rent" this week.', choices: [{ label: 'Pay ₦5,000', value: 'pay' }, { label: 'Refuse', value: 'refuse' }] }),
       resolve(s, v) { if (v === 'pay') { s.money -= 5000; return 'You paid. Peace for now.'; } if (chance(s, 0.5)) { stat(s, 'health', -8); return 'They made your life miserable for days.'; } return 'They let it slide this time.'; },
     },
     'j-jailbreak': {
@@ -657,6 +681,6 @@
   return {
     DOW, NEEDS, ACTIONS, timeLabel, dateLabel, hour, dailyPay, weeklyBills,
     passTime, sleep, idle, listActions, doAction, autoStep, fastForward, pickAuto, trip,
-    registerActions, registerEncounters, onDay, rollEncounter, need,
+    registerActions, registerEncounters, onDay, rollEncounter, need, addGate, onSleep, gateReason, addAutoHook,
   };
 });
