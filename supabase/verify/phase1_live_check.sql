@@ -87,9 +87,18 @@ checks(check_name, ok, detail) as (
          coalesce(max(coalesce(proacl::text, 'default (PUBLIC can execute)')), 'missing')
     from fn
   union all
+  -- Exact bytes, or the same code with only indentation / trailing spaces / CRs changed (the SQL
+  -- Editor re-indents pasted text). That is safe to accept: line breaks and every other character
+  -- must still match, and no string literal in the reviewed body spans lines, so the tokens are
+  -- identical. Anything else fails; supabase/verify/phase1_function_diff.sql shows which lines.
   select '14 function body = reviewed version (fingerprint)',
-         coalesce(bool_and(md5(replace(prosrc, E'\r', '')) = '10850996eebe13b27f16630d82366103'), false),
-         coalesce(max('nfc_normalize=' || (strpos(prosrc, 'normalize(') > 0)
+         coalesce(bool_and(md5(replace(prosrc, chr(13), '')) = '10850996eebe13b27f16630d82366103'
+                        or md5(regexp_replace(replace(prosrc, chr(13), ''), '^[ ' || chr(9) || ']+|[ ' || chr(9) || ']+$', '', 'gn')) = 'a1ffc329cee0b869b0f2eed3cd9567d4'), false),
+         coalesce(max(case when md5(replace(prosrc, chr(13), '')) = '10850996eebe13b27f16630d82366103' then 'match=exact'
+                           when md5(regexp_replace(replace(prosrc, chr(13), ''), '^[ ' || chr(9) || ']+|[ ' || chr(9) || ']+$', '', 'gn')) = 'a1ffc329cee0b869b0f2eed3cd9567d4'
+                             then 'match=same code (only indentation/trailing spaces differ)'
+                           else 'match=DIFFERENT (run supabase/verify/phase1_function_diff.sql)' end
+                      || ' nfc_normalize=' || (strpos(prosrc, 'normalize(') > 0)
                       || ' unicode_allow_list=' || (strpos(prosrc, chr(92) || 'u1E00-' || chr(92) || 'u1EFF') > 0)
                       || ' starting_cash_50000=' || (strpos(prosrc, '50000') > 0)), 'missing')
     from fn

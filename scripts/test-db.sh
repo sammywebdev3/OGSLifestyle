@@ -64,6 +64,45 @@ grant execute on function public.create_character(text, jsonb) to anon
 BAD
 echo "PASS: live-check script fails on 13 known-bad variants"
 
+# Check 14 (function body). The live function was created from text pasted into the SQL Editor,
+# which re-indents it. Recreate the function with a changed body (SQL expression over `src`)
+# inside a rolled-back transaction.
+DIFF="$ROOT/supabase/verify/phase1_function_diff.sql"
+MIGRATION="$ROOT/supabase/migrations/20261018000000_phase1_players.sql"
+rebody() {
+  echo "do \$d\$ declare src text; begin select prosrc into src from pg_proc where oid = 'public.create_character(text,jsonb)'::regprocedure; execute format('create or replace function public.create_character(p_name text, p_avatar jsonb) returns public.players language plpgsql security definer set search_path = %L as %L', '', $1); end \$d\$"
+}
+# Whitespace-only edits must pass, be reported as such, and show no differing lines.
+while IFS= read -r expr; do
+  out=$(psql -X -At -F'|' -v ON_ERROR_STOP=1 -c "begin" -c "$(rebody "$expr")" -f "$VERIFY" -f "$DIFF" -c "rollback")
+  echo "$out" | grep -q '^00 ALL CHECKS|t|' \
+    && echo "$out" | grep -q '^14 .*|t|match=same code' \
+    && echo "$out" | grep -q '^0|SUMMARY: live lines=55 expected=55 differing=0|' \
+    || { echo "$out"; echo "FAIL: whitespace-only body change not accepted: $expr" >&2; exit 1; }
+done <<'GOOD'
+replace(src, chr(10), chr(10) || '    ')
+replace(src, chr(10), chr(10) || chr(9) || '  ')
+replace(src, chr(10), '   ' || chr(10))
+replace(src, chr(10), chr(13) || chr(10) || '  ')
+GOOD
+echo "PASS: check 14 accepts 4 indentation/trailing-space/CRLF variants of the reviewed body"
+# Real code changes that keep all three detail flags true must fail, and the diff script must
+# point at the changed migration line. Each line: <expression>|<migration line that changes>
+while IFS='|' read -r expr pattern; do
+  line=$(grep -nF -- "$pattern" "$MIGRATION" | head -1 | cut -d: -f1)
+  out=$(psql -X -At -F'|' -v ON_ERROR_STOP=1 -c "begin" -c "$(rebody "replace($expr, chr(10), chr(10) || '  ')")" -f "$VERIFY" -f "$DIFF" -c "rollback")
+  echo "$out" | grep -q '^14 .*|f|match=DIFFERENT.*nfc_normalize=true unicode_allow_list=true starting_cash_50000=true' \
+    && echo "$out" | grep -q '^0|SUMMARY: live lines=55 expected=55 differing=1|' \
+    && echo "$out" | grep -q "^$line|" \
+    || { echo "$out"; echo "FAIL: check 14 / diff did not catch: $expr" >&2; exit 1; }
+done <<'BADBODY'
+replace(src, '50000,', '500000,')|50000,
+replace(src, '.-]*$', '.0-9-]*$')|.-]*$
+replace(src, 'return v_player;', 'update public.players set cash = 999999999; return v_player;')|return v_player;
+replace(src, 'Ọ ẹ', 'O e')|Ọ ẹ
+BADBODY
+echo "PASS: check 14 rejects 4 re-indented body changes whose flags are still true and the diff names the changed line"
+
 echo "▶ running SQL tests"
 for f in "$ROOT"/supabase/tests/*.test.sql; do
   psql -q -v ON_ERROR_STOP=1 -f "$f" 2>&1 | sed -n 's/^psql:[^ ]* NOTICE:  //p; s/^NOTICE:  //p; /^==/p; /FAIL/p; /ERROR/p'
