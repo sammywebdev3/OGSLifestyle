@@ -1,0 +1,51 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import type { AvatarSelection } from '@/types/player';
+import type { GameBus } from '@/game/events';
+import { Spinner } from '@/components/ui/Spinner';
+
+/**
+ * Hosts the Phaser canvas. Phaser is imported inside useEffect, so it is never
+ * evaluated during server rendering. Cleans up the game on unmount.
+ */
+export default function GameCanvas({ avatar, characterName, bus }: { avatar: AvatarSelection; characterName: string; bus: GameBus }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+
+  useEffect(() => {
+    let cancelled = false;
+    let handle: { destroy(): void } | null = null;
+    const offReady = bus.world.on('ready', () => !cancelled && setState('ready'));
+    import('@/game/createGame')
+      .then(({ createGame }) => (hostRef.current && !cancelled ? createGame(hostRef.current, { avatar, characterName, bus }) : null))
+      .then((h) => {
+        if (cancelled) h?.destroy();
+        else handle = h;
+      })
+      .catch((err: unknown) => {
+        console.error('Failed to start the game', err);
+        if (!cancelled) setState('error');
+      });
+    return () => {
+      cancelled = true;
+      offReady();
+      handle?.destroy();
+    };
+  }, [avatar, characterName, bus]);
+
+  return (
+    <div className="absolute inset-0">
+      <div ref={hostRef} className="game-host absolute inset-0" aria-label="Game world" />
+      {state === 'loading' && <div className="absolute inset-0 grid place-items-center bg-adire-900 text-cream"><Spinner label="Building Kuto…" /></div>}
+      {state === 'error' && (
+        <div className="absolute inset-0 grid place-items-center bg-adire-900 p-6 text-center text-cream">
+          <div>
+            <p className="font-display text-xl font-black">The world couldn&apos;t load.</p>
+            <p className="mt-1 text-sm text-cream/70">Your browser may not support WebGL or canvas. Try refreshing.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
