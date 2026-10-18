@@ -37,6 +37,33 @@ for f in "$ROOT"/supabase/migrations/*.sql; do
   psql -q -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done
 
+echo "▶ live-check script (supabase/verify/phase1_live_check.sql)"
+VERIFY="$ROOT/supabase/verify/phase1_live_check.sql"
+all_ok() { psql -X -At -F'|' -v ON_ERROR_STOP=1 "$@" | grep '^00 ALL CHECKS|' | cut -d'|' -f2; }
+[ "$(all_ok -f "$VERIFY")" = "t" ] || { psql -X -f "$VERIFY"; echo "FAIL: live-check script does not pass on the migration" >&2; exit 1; }
+echo "PASS: live-check script passes on the migrated database"
+# Each known-bad change (inside a rolled-back transaction) must make the script fail.
+while IFS= read -r bad; do
+  [ -n "$bad" ] || continue
+  r=$(all_ok -c "begin" -c "$bad" -f "$VERIFY" -c "rollback")
+  [ "$r" = "f" ] || { echo "FAIL: live-check script did not catch: $bad" >&2; exit 1; }
+done <<'BAD'
+alter table public.inventories disable row level security
+alter policy "players: read own" on public.players using (true)
+grant insert on public.players to authenticated
+grant truncate on public.inventory_items to authenticated
+grant select on public.players to anon
+alter table public.players alter column cash set default 100
+alter table public.inventory_items drop constraint inventory_items_quantity_check
+create trigger t before insert on public.players for each row execute function suppress_redundant_updates_trigger()
+grant create on schema public to service_role; alter function public.create_character(text, jsonb) owner to service_role
+alter function public.create_character(text, jsonb) security invoker
+alter function public.create_character(text, jsonb) set search_path = public
+grant execute on function public.create_character(text, jsonb) to public
+grant execute on function public.create_character(text, jsonb) to anon
+BAD
+echo "PASS: live-check script fails on 13 known-bad variants"
+
 echo "▶ running SQL tests"
 for f in "$ROOT"/supabase/tests/*.test.sql; do
   psql -q -v ON_ERROR_STOP=1 -f "$f" 2>&1 | sed -n 's/^psql:[^ ]* NOTICE:  //p; s/^NOTICE:  //p; /^==/p; /FAIL/p; /ERROR/p'

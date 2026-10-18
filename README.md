@@ -125,6 +125,12 @@ it **once**.
      from pg_proc where oid = 'public.create_character(text,jsonb)'::regprocedure;
    ```
 
+**Full read-only check (any time, before or after changes):** paste
+[`supabase/verify/phase1_live_check.sql`](supabase/verify/phase1_live_check.sql) into the SQL Editor and Run. It changes
+nothing. It compares the live project with the reviewed migration: tables, RLS, policies, grants, constraints, and the
+function's owner, settings, permissions and exact body. Every row should show `ok = true`. `npm run test:db` checks
+that the script passes on the migration and fails on 13 known-bad variants.
+
 **Alternative: the Supabase CLI.** These are the documented commands, but **this CLI workflow has not been verified
 for this repository**. The repo has no `supabase/config.toml` yet, and it was never run against a live project.
 
