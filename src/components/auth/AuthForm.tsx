@@ -38,6 +38,7 @@ export function AuthForm({ mode, errorCode = null }: { mode: Mode; errorCode?: A
     return (
       <Card>
         <h1 className="font-display text-2xl font-black">{mode === 'login' ? 'Sign in' : 'Create account'}</h1>
+        {error ? <div className="mt-4"><Notice tone="error">{error}</Notice></div> : null}
         <div className="mt-4"><Notice tone="warn">Online accounts aren&apos;t set up on this server yet (Supabase isn&apos;t configured). You can still try the game as a guest — your progress stays in this browser only.</Notice></div>
         <ButtonLink href="/create?mode=guest" variant="primary" className="mt-5 w-full">Play as guest</ButtonLink>
       </Card>
