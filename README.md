@@ -57,14 +57,25 @@ Copy `.env.example` to `.env.local` for local development. **Never commit `.env.
 | `NEXT_PUBLIC_SUPABASE_URL` | yes | for online accounts |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | yes (safe: Row Level Security protects the data) | for online accounts (new projects) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | only on older projects without a publishable key (fallback) |
-| `NEXT_PUBLIC_SITE_URL` | yes | recommended (auth email links), e.g. `https://your-app.vercel.app` |
+| `NEXT_PUBLIC_SITE_URL` | yes | Production only (auth email links), e.g. `https://your-app.vercel.app`. Leave unset in Preview and locally (it falls back to the current URL) |
 | `SUPABASE_SECRET_KEY` (or the legacy `SUPABASE_SERVICE_ROLE_KEY`) | **never** | not used yet; server-only, do not set it unless a feature needs it |
 
 The app treats missing values, or the placeholder values from `.env.example`, as "not configured". It then falls back
 to guest mode instead of crashing. The Supabase URL must be `https://` (or `localhost`).
 
-**On Vercel**, set the same variables for **Production** and **Preview**, then redeploy. A `NEXT_PUBLIC_*` value is
-built into the bundle, so changing one requires a new deployment.
+**On Vercel** (Project → Settings → Environment Variables):
+
+| Variable | Production | Preview |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | ✅ set | ✅ set |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or legacy `…_ANON_KEY`) | ✅ set | ✅ set |
+| `NEXT_PUBLIC_SITE_URL` | ✅ your production URL | ❌ **leave unset** |
+| `SUPABASE_SECRET_KEY` | ❌ not needed yet | ❌ not needed yet |
+
+`NEXT_PUBLIC_SITE_URL` must **not** be set for Preview. Confirmation links have to return to the same deployment
+that started the sign-up, because the PKCE verifier cookie lives on that domain. When the variable is unset, the app
+uses the current page's URL (the preview URL), which is what you want. A `NEXT_PUBLIC_*` value is built into the
+bundle, so changing one requires a new deployment.
 
 ## Supabase setup (online accounts)
 
@@ -81,21 +92,76 @@ These are manual steps in **your** Supabase project. Nothing in this repo touche
     - `https://your-app.vercel.app/auth/callback`
     - optionally, preview deployments: `https://*-<your-vercel-team>.vercel.app/auth/callback`
 - **Sessions:** the app uses `@supabase/ssr` cookies (PKCE flow), so no extra setting is needed.
+- **Email sending (SMTP):** Supabase's built-in email sender is for testing only. It has a very low sending limit
+  (a handful of emails per hour), and while it is in use it may only deliver to your project team's addresses. With
+  **Confirm email** on, sign-ups beyond that limit get no confirmation email. **Before opening registration to the
+  public**, configure custom SMTP under **Authentication → Emails → SMTP Settings** (with any transactional email
+  provider), and review the email rate limits under **Authentication → Rate Limits**.
 
 ### 2. Apply the migration: an explicit, manual step
 
-The migration is `supabase/migrations/20261018000000_phase1_players.sql`. Test it locally first (below), then
-apply it once, with one of these:
+The migration is `supabase/migrations/20261018000000_phase1_players.sql`. Run `npm run test:db` first. Then apply
+it **once**.
 
-- **Dashboard:** SQL Editor → paste the file → Run.
-- **CLI:** `npx supabase link --project-ref <ref>` then `npx supabase db push`.
+**Recommended for this initial setup: the Supabase SQL Editor** (Dashboard → SQL Editor → New query).
 
-Then regenerate the types from the real project (see the header of `src/lib/supabase/database.types.ts`).
+1. **Pre-check:** every value returned must be `null`. If any is not, stop; the project already has these objects.
+   ```sql
+   select to_regclass('public.players'), to_regclass('public.inventories'),
+          to_regclass('public.inventory_items'), to_regprocedure('public.create_character(text,jsonb)');
+   ```
+2. **Apply:** in a new query, type `begin;`, paste the **entire** migration file, end with `commit;`, then **Run**.
+   Wrapping it this way makes the whole migration apply or nothing.
+3. **Verify (read-only):**
+   - RLS is on for all three tables;
+   - `authenticated` has `SELECT` only, and `anon` has nothing;
+   - `create_character` is owned by `postgres`, is `SECURITY DEFINER`, and has `search_path=""`.
+   ```sql
+   select relname, relrowsecurity from pg_class
+    where relname in ('players','inventories','inventory_items') and relnamespace = 'public'::regnamespace;
+   select table_name, grantee, privilege_type from information_schema.role_table_grants
+    where table_schema = 'public' and grantee in ('anon','authenticated') order by 1,2,3;
+   select pg_get_userbyid(proowner), prosecdef, proconfig, proacl
+     from pg_proc where oid = 'public.create_character(text,jsonb)'::regprocedure;
+   ```
+
+**Alternative: the Supabase CLI.** These are the documented commands, but **this CLI workflow has not been verified
+for this repository**. The repo has no `supabase/config.toml` yet, and it was never run against a live project.
+
+```bash
+npx supabase login                         # opens a browser / asks for an access token
+npx supabase init                          # creates supabase/config.toml; keeps existing migrations
+npx supabase link --project-ref <project-ref>   # asks for the database password
+npx supabase db push --dry-run             # review what would run
+npx supabase db push
+```
+
+If you used the SQL Editor first and switch to the CLI later, mark the migration as already applied, so that
+`db push` doesn't try to run it again:
+`npx supabase migration repair --status applied 20261018000000`.
+
+After the migration is live, regenerate the database types (see **Database types** below).
 
 ### 3. Keys
 
 Copy the **Project URL** and the **publishable** key (or the legacy **anon** key) into `.env.local` and Vercel.
 **Do not** put the secret or service-role key in any `NEXT_PUBLIC_*` variable, in source code, or in chat.
+
+## Database types
+
+- **`src/lib/supabase/database.types.ts`** is **generated**; never edit it by hand. The committed version was
+  generated with `supabase/postgres-meta` from the migration applied to a local Supabase Postgres, so it describes
+  the migration, not the live project.
+- **`src/lib/supabase/rows.ts`** holds the hand-written aliases (`PlayerRow`, `InventoryRow`, `InventoryItemRow`). It
+  derives them from the generated `Database` type, so regenerating never deletes them.
+
+To regenerate after the migration is live:
+
+```bash
+npx supabase login
+npx supabase gen types typescript --project-id <project-ref> --schema public > src/lib/supabase/database.types.ts
+npm run typecheck   # if a table was renamed or removed, rows.ts fails here; update it
+```
 
 ## Database tests (local, disposable)
 
@@ -120,7 +186,7 @@ npm run test:db   # needs Docker and the psql client
 ## Deploying to Vercel
 
 1. Import the GitHub repo in Vercel. It detects Next.js automatically; no `vercel.json` is needed.
-2. Add the environment variables above under **Project → Settings → Environment Variables**, for Production and Preview. Skip them to deploy in guest-only mode.
+2. Add the environment variables as listed in the Production/Preview table above. Note that `NEXT_PUBLIC_SITE_URL` is Production only. Skip them all to deploy in guest-only mode.
 3. Deploy. `npm run build` must pass, and it does at the time of writing.
 
 ## Project structure
@@ -154,7 +220,8 @@ src/
     player/                 PlayerProvider (React context), API client, guest store
     auth/                   Sign-in / sign-up helpers
   lib/
-    supabase/               env detection, browser/server clients, admin (server-only), DB types
+    supabase/               env detection, browser/server clients, admin (server-only),
+                            database.types.ts (generated) + rows.ts (aliases)
     validation/             Shared input validation (client + server)
   server/                   Server-side game services (import 'server-only')
     services/playerService.ts

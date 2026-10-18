@@ -1,5 +1,5 @@
 import 'server-only';
-import type { InventoryItemRow, PlayerRow } from '@/lib/supabase/database.types';
+import type { InventoryItemRow, PlayerRow } from '@/lib/supabase/rows';
 import type { Inventory, InventoryItem, ItemKey } from '@/types/inventory';
 import type { AvatarSelection, LocationId, Player } from '@/types/player';
 import { DEFAULT_AVATAR, ITEMS, LOCATIONS } from '@/config/game';

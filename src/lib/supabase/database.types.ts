@@ -4,9 +4,11 @@
  * Source: supabase/postgres-meta v0.88.0 (the generator behind `supabase gen types`)
  * run against a DISPOSABLE local supabase/postgres:15.8.1.085 database with
  * supabase/migrations/*.sql applied. They describe the migration, not a live
- * project. After deploying the migration, regenerate from the real project:
+ * project. After deploying the migration, regenerate from the real project
+ * (requires `npx supabase login` first):
  *   npx supabase gen types typescript --project-id <project-ref> --schema public > src/lib/supabase/database.types.ts
- * (then re-add the aliases at the bottom of this file).
+ * This overwrites the whole file. Hand-written aliases live in ./rows.ts, so
+ * nothing needs to be re-added; run `npm run typecheck` afterwards.
  *
  * Insert/Update types exist for typing only: the database refuses all client writes.
  */
@@ -241,8 +243,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
-// ---- project aliases (not generated) ----
-export type PlayerRow = Database['public']['Tables']['players']['Row'];
-export type InventoryRow = Database['public']['Tables']['inventories']['Row'];
-export type InventoryItemRow = Database['public']['Tables']['inventory_items']['Row'];
