@@ -68,7 +68,7 @@ set search_path = ''
 as $$
 declare
   v_uid    uuid := auth.uid();
-  v_name   text := btrim(regexp_replace(coalesce(p_name, ''), '\s+', ' ', 'g'));
+  v_name   text := btrim(regexp_replace(normalize(coalesce(p_name, ''), nfc), '\s+', ' ', 'g'));
   v_player public.players;
   v_inv    uuid;
 begin
@@ -76,11 +76,13 @@ begin
     raise exception 'You must be signed in to create a character' using errcode = '28000';
   end if;
 
-  -- Locale-independent check (Yoruba letters like Ọ and ẹ must pass): reject digits,
-  -- symbols and control characters rather than whitelisting [[:alpha:]].
+  -- Allow-list by Unicode code point (independent of the database locale), matching
+  -- NAME_PATTERN in src/lib/validation/character.ts exactly:
+  --   letters: A-Z a-z, Latin-1 letters (no × ÷), Latin Extended-A/B, IPA (Hausa ɓ ɗ),
+  --            Latin Extended Additional (Yoruba/Igbo Ọ ẹ ṣ ị ụ ṅ)
+  --   after the first letter also: combining tone marks, space, apostrophe, dot, hyphen.
   if char_length(v_name) < 3 or char_length(v_name) > 20
-     or v_name ~ '[[:cntrl:]0-9_<>{}()@#$%^&*+=!?/\\|;:"`~,\[\]]'
-     or left(v_name, 1) ~ '[ ''.-]' then
+     or v_name !~ '^[A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02AF\u1E00-\u1EFF][A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02AF\u1E00-\u1EFF\u0300-\u036F'' .-]*$' then
     raise exception 'Invalid character name' using errcode = '22023';
   end if;
 
