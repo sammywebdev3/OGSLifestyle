@@ -10,7 +10,7 @@ export async function middleware(request: NextRequest) {
   const env = getPublicSupabaseEnv();
   if (!env) return NextResponse.next();
   let response = NextResponse.next({ request });
-  const supabase = createServerClient(env.url, env.anonKey, {
+  const supabase = createServerClient(env.url, env.publicKey, {
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (toSet) => {

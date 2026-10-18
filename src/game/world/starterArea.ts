@@ -4,6 +4,7 @@
  * or authored in a tool without touching rendering code.
  */
 import type { InteractionTarget } from '@/types/game';
+import type { LocationId } from '@/types/player';
 
 export type TileKind = 'laterite' | 'grass' | 'road' | 'pavement' | 'gutter' | 'courtyard' | 'slab';
 
@@ -27,6 +28,9 @@ export interface InteractableDef extends InteractionTarget {
   /** Reach in tiles. */
   radius: number;
 }
+
+/** The game location this map represents (shown in the HUD). */
+export const LOCATION_ID: LocationId = 'kuto-street';
 
 export const MAP_W = 20;
 export const MAP_H = 18;

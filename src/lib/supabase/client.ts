@@ -15,6 +15,6 @@ let browserClient: SupabaseClient<Database> | null = null;
 export function getBrowserSupabase(): SupabaseClient<Database> | null {
   const env = getPublicSupabaseEnv();
   if (!env) return null;
-  browserClient ??= createBrowserClient<Database>(env.url, env.anonKey);
+  browserClient ??= createBrowserClient<Database>(env.url, env.publicKey);
   return browserClient;
 }

@@ -14,7 +14,7 @@ export async function getServerSupabase(): Promise<SupabaseClient<Database> | nu
   const env = getPublicSupabaseEnv();
   if (!env) return null;
   const cookieStore = await cookies();
-  return createServerClient<Database>(env.url, env.anonKey, {
+  return createServerClient<Database>(env.url, env.publicKey, {
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (toSet) => {

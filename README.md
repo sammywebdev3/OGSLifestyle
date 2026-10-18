@@ -43,38 +43,84 @@ You don't need any credentials to run it.
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve the production build |
 | `npm run typecheck` | TypeScript check (`tsc --noEmit`) |
-| `npm test` | Unit tests with Node's built-in runner (validation and isometric maths) |
+| `npm test` | Unit tests with Node's built-in runner (validation, isometric maths, env, auth events, same-origin checks) |
+| `npm run test:db` | Migration and RLS tests in a disposable local Supabase Postgres (Docker) |
 
 Node 20.9 or newer is required. `npm test` uses Node's `--experimental-strip-types` flag, which needs **Node 22.6 or newer**.
 
 ## Environment variables
 
-Copy `.env.example` to `.env.local` and fill it in. **Never commit `.env.local`**; it is already git-ignored.
+Copy `.env.example` to `.env.local` for local development. **Never commit `.env.local`**; it is git-ignored.
 
-| Variable | Where it's used | Required? |
+| Variable | Exposed to the browser? | Required? |
 | --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Browser and server | Only for online accounts |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser and server. This is a public key; Row Level Security protects the data. | Only for online accounts |
-| `SUPABASE_SERVICE_ROLE_KEY` | **Server only.** Reserved for future trusted jobs; Phase 1 does not use it. | No |
-| `NEXT_PUBLIC_SITE_URL` | Auth email redirect base (for example `https://your-app.vercel.app`) | Recommended in production |
+| `NEXT_PUBLIC_SUPABASE_URL` | yes | for online accounts |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | yes (safe: Row Level Security protects the data) | for online accounts (new projects) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | only on older projects without a publishable key (fallback) |
+| `NEXT_PUBLIC_SITE_URL` | yes | recommended (auth email links), e.g. `https://your-app.vercel.app` |
+| `SUPABASE_SECRET_KEY` (or the legacy `SUPABASE_SERVICE_ROLE_KEY`) | **never** | not used yet; server-only, do not set it unless a feature needs it |
 
-If these variables are missing, or still hold the placeholder values from `.env.example`, the app detects that and falls back to guest mode. It does not crash.
+The app treats missing values, or the placeholder values from `.env.example`, as "not configured". It then falls back
+to guest mode instead of crashing. The Supabase URL must be `https://` (or `localhost`).
 
-## Setting up Supabase (online accounts)
+**On Vercel**, set the same variables for **Production** and **Preview**, then redeploy. A `NEXT_PUBLIC_*` value is
+built into the bundle, so changing one requires a new deployment.
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. Run the migration in the SQL editor: paste the contents of `supabase/migrations/20261018000000_phase1_players.sql`.
-   Alternatively, use the Supabase CLI: `supabase db push`.
-3. In **Authentication → URL Configuration**:
-   - set **Site URL** to your app's URL;
-   - add `<your-url>/auth/callback` to the **Redirect URLs**.
-4. Put the project URL and the **anon** key in `.env.local`, or in your Vercel project's environment variables.
-5. Restart the app. **Sign in** and **Create account** now work, and characters are saved in Postgres.
+## Supabase setup (online accounts)
+
+These are manual steps in **your** Supabase project. Nothing in this repo touches it automatically.
+
+### 1. Authentication settings (dashboard)
+
+- **Authentication → Sign In / Providers → Email:** enabled. **Confirm email** may stay on (recommended); the app
+  shows "check your email" and finishes sign-in through `/auth/callback`.
+- **Authentication → URL Configuration:**
+  - **Site URL:** your production URL, for example `https://your-app.vercel.app`.
+  - **Redirect URLs:** add every place a confirmation link may return to:
+    - `http://localhost:3000/auth/callback`
+    - `https://your-app.vercel.app/auth/callback`
+    - optionally, preview deployments: `https://*-<your-vercel-team>.vercel.app/auth/callback`
+- **Sessions:** the app uses `@supabase/ssr` cookies (PKCE flow), so no extra setting is needed.
+
+### 2. Apply the migration: an explicit, manual step
+
+The migration is `supabase/migrations/20261018000000_phase1_players.sql`. Test it locally first (below), then
+apply it once, with one of these:
+
+- **Dashboard:** SQL Editor → paste the file → Run.
+- **CLI:** `npx supabase link --project-ref <ref>` then `npx supabase db push`.
+
+Then regenerate the types from the real project (see the header of `src/lib/supabase/database.types.ts`).
+
+### 3. Keys
+
+Copy the **Project URL** and the **publishable** key (or the legacy **anon** key) into `.env.local` and Vercel.
+**Do not** put the secret or service-role key in any `NEXT_PUBLIC_*` variable, in source code, or in chat.
+
+## Database tests (local, disposable)
+
+```bash
+npm run test:db   # needs Docker and the psql client
+```
+
+- **What it runs:**
+  - starts the official `supabase/postgres:15.8.1.085` image in a throwaway container;
+  - applies every migration as the `postgres` role, as Supabase does;
+  - runs `supabase/tests/*.test.sql`;
+  - runs real concurrency tests from separate connections.
+- **What the checks cover:**
+  - grants, Row Level Security and the database function's security settings;
+  - Yoruba, Hausa and Igbo names, and invalid names;
+  - anonymous and unauthenticated calls;
+  - reads and writes against other users' data;
+  - duplicate and simultaneous character creation.
+- **Safety:** the container is removed afterwards. The script never reads `DATABASE_URL` or any Supabase credentials,
+  so it cannot touch a real project.
 
 ## Deploying to Vercel
 
 1. Import the GitHub repo in Vercel. It detects Next.js automatically; no `vercel.json` is needed.
-2. Add the environment variables above under **Project → Settings → Environment Variables**. Skip them to deploy in guest-only mode.
+2. Add the environment variables above under **Project → Settings → Environment Variables**, for Production and Preview. Skip them to deploy in guest-only mode.
 3. Deploy. `npm run build` must pass, and it does at the time of writing.
 
 ## Project structure
@@ -142,10 +188,16 @@ supabase/migrations/        SQL schema, RLS policies, create_character()
     items.
 - **Row Level Security** is on for every table.
   - Players can **read** only their own rows.
-  - There are **no client write policies**, and insert, update and delete privileges are revoked from `anon` and
-    `authenticated`.
-- **Service-role key.** It is only read in `src/lib/supabase/admin.ts`, which imports `server-only`; the build
-  fails if client code imports it. Phase 1 does not use it.
+  - There are **no client write policies**. `anon` holds no table privileges, and `authenticated` holds `SELECT`
+    only, so it has no insert, update, delete or truncate. (Truncate is not covered by Row Level Security.)
+- **`create_character()`** runs `SECURITY DEFINER` with an empty `search_path`. Only `authenticated` can execute it;
+  `anon` and `PUBLIC` cannot.
+  - It always uses the caller's own user ID (`auth.uid()`); there is no parameter for anyone else's ID.
+  - `UNIQUE(user_id)` makes duplicate or simultaneous requests safe.
+- **CSRF.** `POST /api/player` accepts only `application/json` and refuses a cross-site `Origin`, on top of
+  Supabase's `SameSite=Lax` cookies.
+- **Secret / service-role key.** It is only read in `src/lib/supabase/admin.ts`, which imports `server-only`; the
+  build fails if client code imports it. Nothing uses it yet.
 - **Sessions.** Server code validates the session with `auth.getUser()` and never trusts a cookie on its own.
 - **Guest mode** data is local and untrusted by design. It is clearly labelled and is never sent to the server as a balance.
 
@@ -153,12 +205,15 @@ supabase/migrations/        SQL schema, RLS policies, create_character()
 - There is no economy yet: earning, spending, transfers and trading are all still to come. Those future actions need
   their own transactional, server-side functions and tests before the economy can be called secure.
 - Rate limiting, abuse protection and multiplayer authority are Phase 2+ work.
-- The SQL migration and RLS policies were written for this phase but **have not been run against a live Supabase
-  project from this repository's CI**. Apply them and test with two accounts before relying on them.
+- The migration and RLS policies **pass `npm run test:db`**, run against the official Supabase Postgres image
+  locally. They have **not** yet been applied to the live project or tested through the real Auth and API services
+  there. Do that once, with two accounts, after deploying.
+- There is no rate limiting on `/api/player` or on sign-up. Supabase Auth has its own limits; add app-level limits
+  before launch.
 
 ## Roadmap — Phase 2 and beyond
 
-- Apply the migration to a real Supabase project, with end-to-end tests covering two users and RLS checks.
+- Apply the migration to the real Supabase project (a manual step), regenerate types, and run an end-to-end sign-up with two users.
 - Persist the player's position and location server-side, so you can travel between areas.
 - Server-side economy actions (jobs and pay, shops, rent) as transactional database functions, with an audit log.
 - Needs and time of day, and interiors you can enter (the apartment as a Phaser scene).

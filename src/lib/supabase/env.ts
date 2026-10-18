@@ -1,29 +1,40 @@
 /**
- * Supabase configuration detection. Only the PUBLIC url and anon key are read
- * here; the service-role key is read exclusively in ./admin.ts (server-only).
+ * Supabase configuration detection. Only PUBLIC values are read here; the secret
+ * key is read exclusively in ./admin.ts (server-only).
  *
- * If the values are missing or still the placeholders from .env.example, the
- * app runs in offline guest mode instead of failing.
+ * Key names: Supabase now issues a "publishable" key (sb_publishable_…). Older
+ * projects show an "anon" key instead. Either works for the browser:
+ *   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY  (preferred)
+ *   NEXT_PUBLIC_SUPABASE_ANON_KEY         (fallback, backward compatible)
+ *
+ * Missing values, or the placeholders from .env.example, mean "not configured":
+ * the app then runs in offline guest mode instead of failing.
  */
 
-const PLACEHOLDER = /your-project-ref|your-anon-public-key|^$/;
+const PLACEHOLDER = /your-project-ref|your-publishable-key|your-anon-public-key|^\s*$/;
 
 export interface PublicSupabaseEnv {
   url: string;
-  anonKey: string;
+  /** Publishable (or legacy anon) key — safe for the browser; RLS protects data. */
+  publicKey: string;
 }
 
+const usable = (v: string | undefined): v is string => typeof v === 'string' && !PLACEHOLDER.test(v);
+
 export function getPublicSupabaseEnv(): PublicSupabaseEnv | null {
-  // Must be referenced literally so Next.js can inline them into the client bundle.
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
-  if (PLACEHOLDER.test(url) || PLACEHOLDER.test(anonKey)) return null;
+  // Referenced literally so Next.js inlines them into the client bundle.
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishable = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const publicKey = usable(publishable) ? publishable : usable(anon) ? anon : null;
+  if (!usable(url) || !publicKey) return null;
   try {
-    new URL(url);
+    const u = new URL(url);
+    if (u.protocol !== 'https:' && u.hostname !== 'localhost' && u.hostname !== '127.0.0.1') return null;
   } catch {
     return null;
   }
-  return { url, anonKey };
+  return { url, publicKey };
 }
 
 export function isSupabaseConfigured(): boolean {
