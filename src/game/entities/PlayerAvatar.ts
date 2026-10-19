@@ -13,7 +13,8 @@ export class PlayerAvatar {
   private body: Phaser.GameObjects.Graphics;
   private walkTime = 0;
 
-  constructor(scene: Phaser.Scene, avatar: AvatarSelection, name: string) {
+  /** `remote`: another player's character (different name tag colour). */
+  constructor(scene: Phaser.Scene, avatar: AvatarSelection, name: string, opts: { remote?: boolean } = {}) {
     const skin = hex(SKIN_TONES[avatar.skin].hex);
     const outfit = hex(OUTFIT_COLORS[avatar.outfit].hex);
     const femme = avatar.body === 'femme';
@@ -38,7 +39,8 @@ export class PlayerAvatar {
     }
 
     const label = scene.add.text(0, -76, name, {
-      fontFamily: 'Trebuchet MS, sans-serif', fontSize: '11px', fontStyle: 'bold', color: '#fff6e5', backgroundColor: 'rgba(17,26,61,0.75)', padding: { x: 4, y: 1 },
+      fontFamily: 'Trebuchet MS, sans-serif', fontSize: '11px', fontStyle: 'bold', color: '#fff6e5',
+      backgroundColor: opts.remote ? 'rgba(18,147,90,0.85)' : 'rgba(17,26,61,0.75)', padding: { x: 4, y: 1 },
     }).setOrigin(0.5, 1);
 
     this.container = scene.add.container(0, 0, [shadow, this.legs, body, label]);
@@ -50,6 +52,15 @@ export class PlayerAvatar {
     this.legs.fillStyle(0x2a3a5c);
     this.legs.fillRoundedRect(-8, -16 - Math.max(0, swing) * 3, 6, 16, 2);
     this.legs.fillRoundedRect(2, -16 - Math.max(0, -swing) * 3, 6, 16, 2);
+  }
+
+  /** Turn to face left (negative) or right (positive) on screen, e.g. while standing still. */
+  face(screenDx: number) {
+    if (screenDx !== 0) this.body.scaleX = screenDx < 0 ? -1 : 1;
+  }
+
+  destroy() {
+    this.container.destroy(true);
   }
 
   /** Call every frame with whether the player moved and the horizontal screen direction. */

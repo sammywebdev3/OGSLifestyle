@@ -1,6 +1,7 @@
 import * as Phaser from 'phaser';
 import type { AvatarSelection } from '@/types/player';
-import type { Direction } from '@/types/game';
+import type { Direction, LocalPlayerState, RemotePlayerView } from '@/types/game';
+import { Smoother } from '@/features/multiplayer/motion';
 import type { GameBus } from '../events';
 import { depthOf, gridToScreen, moveWithCollision, screenDirToGrid } from '../iso/isoMath';
 import { BUILDINGS, INTERACTABLES, LOCATION_ID, MAP_H, MAP_W, PROPS, SPAWN, buildBlockedSet, isBlockedFn, tileAt, type BuildingDef, type InteractableDef } from '../world/starterArea';
@@ -18,6 +19,9 @@ export interface SceneOptions {
 const SPEED = 3.4; // tiles per second
 const RADIUS = 0.28; // player collision radius in tiles
 
+/** Another player's character: drawn from multiplayer updates, never controlled locally. */
+interface RemoteAvatar { avatar: PlayerAvatar; motion: Smoother; facing: LocalPlayerState['facing']; moving: boolean }
+
 /** Kuto street corner: floor, buildings, props, a controllable player and interaction spots. */
 export class StarterAreaScene extends Phaser.Scene {
   private opts: SceneOptions;
@@ -30,6 +34,8 @@ export class StarterAreaScene extends Phaser.Scene {
   private markers = new Map<string, Phaser.GameObjects.Graphics>();
   private nearby: InteractableDef | null = null;
   private paused = false;
+  private facing: LocalPlayerState['facing'] = 'right';
+  private remotes = new Map<string, RemoteAvatar>();
   private unsubscribe: (() => void)[] = [];
 
   constructor(opts: SceneOptions) {
@@ -69,8 +75,18 @@ export class StarterAreaScene extends Phaser.Scene {
       ui.on('input:direction', ({ direction, pressed }) => { this.touch[direction] = pressed; }),
       ui.on('input:interact', () => this.interact()),
       ui.on('world:pause', (p) => { this.paused = p; if (p) this.touch = { up: false, down: false, left: false, right: false }; }),
+      ui.on('remote:join', (r) => this.addRemote(r)),
+      ui.on('remote:move', ({ id, x, y, facing, moving }) => {
+        const r = this.remotes.get(id);
+        if (!r) return;
+        r.motion.setTarget(x, y); r.facing = facing; r.moving = moving;
+      }),
+      ui.on('remote:leave', ({ id }) => this.removeRemote(id)),
     );
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribe.forEach((u) => u()));
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.unsubscribe.forEach((u) => u());
+      for (const id of [...this.remotes.keys()]) this.removeRemote(id);
+    });
     world.emit('ready', { locationId: LOCATION_ID });
   }
 
@@ -103,6 +119,25 @@ export class StarterAreaScene extends Phaser.Scene {
     this.player.container.setPosition(s.x, s.y).setDepth(depthOf(this.pos.x, this.pos.y));
   }
 
+  /** Show another player. A second join for the same id replaces the old sprite (never duplicates). */
+  private addRemote(r: RemotePlayerView) {
+    this.removeRemote(r.id);
+    const avatar = new PlayerAvatar(this, r.avatar, r.name, { remote: true });
+    avatar.face(r.facing === 'left' ? -1 : 1);
+    this.remotes.set(r.id, { avatar, motion: new Smoother(r.x, r.y), facing: r.facing, moving: r.moving });
+    this.placeRemote(this.remotes.get(r.id)!);
+  }
+
+  private removeRemote(id: string) {
+    this.remotes.get(id)?.avatar.destroy();
+    this.remotes.delete(id);
+  }
+
+  private placeRemote(r: RemoteAvatar) {
+    const s = gridToScreen(r.motion.x, r.motion.y);
+    r.avatar.container.setPosition(s.x, s.y).setDepth(depthOf(r.motion.x, r.motion.y));
+  }
+
   private interact() {
     if (this.paused || !this.nearby) return;
     const { x: _x, y: _y, radius: _r, ...target } = this.nearby;
@@ -126,6 +161,17 @@ export class StarterAreaScene extends Phaser.Scene {
       this.placePlayer();
     }
     this.player.animate(dt, moving, dx);
+    if (dx !== 0) this.facing = dx < 0 ? 'left' : 'right';
+    // Multiplayer reads this every frame and decides itself when to send.
+    this.opts.bus.world.emit('player:state', { x: this.pos.x, y: this.pos.y, facing: this.facing, moving });
+
+    // Other players: glide towards their last reported position. Their updates never touch this.pos.
+    for (const r of this.remotes.values()) {
+      r.motion.step(dt);
+      this.placeRemote(r);
+      r.avatar.animate(dt, r.moving, r.facing === 'left' ? -1 : 1);
+      if (!r.moving) r.avatar.face(r.facing === 'left' ? -1 : 1);
+    }
     this.sortBuildings();
     this.checkInteractions();
   }

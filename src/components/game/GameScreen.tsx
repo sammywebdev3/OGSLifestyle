@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { InteractionTarget } from '@/types/game';
 import type { LocationId } from '@/types/player';
 import { createGameBus } from '@/game/events';
+import { useMultiplayer } from '@/features/multiplayer/useMultiplayer';
 import { RequirePlayer, type PlayerSession } from '@/components/player/RequirePlayer';
 import { Hud } from './Hud';
 import { InteractionDialog, InteractionPrompt } from './InteractionUi';
@@ -31,6 +32,9 @@ function World({ player, inventory, mode }: PlayerSession) {
   const [bagOpen, setBagOpen] = useState(false);
   // Where the player is right now: reported by the running scene, else their saved location.
   const [locationId, setLocationId] = useState<LocationId>(player.location);
+  // The multiplayer room is the location the running scene reports; a new scene gets a new connection.
+  const [scene, setScene] = useState<{ room: LocationId | null; generation: number }>({ room: null, generation: 0 });
+  const multiplayer = useMultiplayer({ bus, playerId: player.id, mode, room: scene.room, generation: scene.generation });
   // Keep the same avatar object unless its values change, so a player reload
   // with identical data doesn't restart the Phaser world.
   const { body, skin, headwear, outfit } = player.avatar;
@@ -40,7 +44,10 @@ function World({ player, inventory, mode }: PlayerSession) {
     const offs = [
       bus.world.on('interaction:available', setNearby),
       bus.world.on('interaction:triggered', setDialog),
-      bus.world.on('ready', ({ locationId: here }) => setLocationId(here)),
+      bus.world.on('ready', ({ locationId: here }) => {
+        setLocationId(here);
+        setScene((s) => ({ room: here, generation: s.generation + 1 }));
+      }),
     ];
     return () => offs.forEach((off) => off());
   }, [bus]);
@@ -61,7 +68,7 @@ function World({ player, inventory, mode }: PlayerSession) {
   return (
     <div className="fixed inset-0 overflow-hidden bg-adire-900">
       <GameCanvas avatar={avatar} characterName={player.characterName} bus={bus} />
-      <Hud player={player} mode={mode} locationId={locationId} onInventory={() => setBagOpen(true)} />
+      <Hud player={player} mode={mode} locationId={locationId} multiplayer={multiplayer} onInventory={() => setBagOpen(true)} />
       {nearby && !dialog && !bagOpen && <InteractionPrompt target={nearby} onInteract={() => bus.ui.emit('input:interact')} />}
       <TouchControls bus={bus} />
       <p className="pointer-events-none absolute bottom-3 right-4 hidden text-xs text-cream/60 [@media(pointer:fine)]:block">Move: WASD / arrows · Interact: E · Bag: I</p>

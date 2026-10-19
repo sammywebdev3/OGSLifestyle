@@ -3,8 +3,8 @@
  *
  * Source: supabase/postgres-meta v0.88.0 (the generator behind `supabase gen types`)
  * run against a DISPOSABLE local supabase/postgres:15.8.1.085 database with
- * supabase/migrations/*.sql applied. They describe the migration, not a live
- * project. After deploying the migration, regenerate from the real project
+ * supabase/migrations/*.sql applied. They describe the migrations, not a live
+ * project. After deploying the migrations, regenerate from the real project
  * (requires `npx supabase login` first):
  *   npx supabase gen types typescript --project-id <project-ref> --schema public > src/lib/supabase/database.types.ts
  * This overwrites the whole file. Hand-written aliases live in ./rows.ts, so
@@ -122,6 +122,20 @@ export type Database = {
           location: string
           user_id: string
         }
+      }
+      get_player_profiles: {
+        Args: {
+          p_player_ids: string[]
+        }
+        Returns: {
+          player_id: string
+          character_name: string
+          avatar: Json
+        }[]
+      }
+      mp_my_player_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
       }
     }
     Enums: {

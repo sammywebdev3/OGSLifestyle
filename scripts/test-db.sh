@@ -31,6 +31,12 @@ for _ in $(seq 1 90); do
 done
 psql -Atqc 'select 1' >/dev/null || { docker logs "$NAME" | tail -20; echo "database did not start" >&2; exit 1; }
 
+echo "▶ test-only setup (supabase/tests/setup: stand-ins for services the local image lacks)"
+for f in "$ROOT"/supabase/tests/setup/*.sql; do
+  echo "  - $(basename "$f")"
+  psql -q -v ON_ERROR_STOP=1 -U supabase_admin -f "$f" >/dev/null
+done
+
 echo "▶ applying migrations"
 for f in "$ROOT"/supabase/migrations/*.sql; do
   echo "  - $(basename "$f")"
