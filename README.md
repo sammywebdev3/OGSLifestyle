@@ -87,10 +87,12 @@ These are manual steps in **your** Supabase project. Nothing in this repo touche
   shows "check your email" and finishes sign-in through `/auth/callback`.
 - **Authentication → URL Configuration:**
   - **Site URL:** your production URL, for example `https://your-app.vercel.app`.
-  - **Redirect URLs:** add every place a confirmation link may return to:
-    - `http://localhost:3000/auth/callback`
-    - `https://your-app.vercel.app/auth/callback`
-    - optionally, preview deployments: `https://*-<your-vercel-team>.vercel.app/auth/callback`
+  - **Redirect URLs:** add every place a confirmation link may return to. Use `/**`, because the link carries a
+    query string (`/auth/callback?next=/create`):
+    - `http://localhost:3000/**`
+    - `https://your-app.vercel.app/**`
+    - optionally, preview deployments: `https://<project>-*-<your-vercel-team-slug>.vercel.app/**` (copy the
+      team slug from any preview URL)
 - **Sessions:** the app uses `@supabase/ssr` cookies (PKCE flow), so no extra setting is needed.
 - **Email sending (SMTP):** Supabase's built-in email sender is for testing only. It has a very low sending limit
   (a handful of emails per hour), and while it is in use it may only deliver to your project team's addresses. With
@@ -195,9 +197,15 @@ npm run test:db   # needs Docker and the psql client
 
 ## Deploying to Vercel
 
-1. Import the GitHub repo in Vercel. It detects Next.js automatically; no `vercel.json` is needed.
+1. Import the GitHub repo in Vercel. `vercel.json` sets the framework to Next.js. This matters for a Vercel project
+   created when this repo was a static site: its saved Framework Preset ("Other") would otherwise make Next.js builds
+   fail.
 2. Add the environment variables as listed in the Production/Preview table above. Note that `NEXT_PUBLIC_SITE_URL` is Production only. Skip them all to deploy in guest-only mode.
 3. Deploy. `npm run build` must pass, and it does at the time of writing.
+4. **After changing any `NEXT_PUBLIC_*` variable, redeploy.** These values are built into the browser code at build
+   time, so an existing deployment never picks them up. Use Deployments → ⋯ → **Redeploy** (or push a commit).
+
+Live sign-up, confirmation and two-account checks: see [`docs/live-auth-test-plan.md`](docs/live-auth-test-plan.md).
 
 ## Project structure
 
