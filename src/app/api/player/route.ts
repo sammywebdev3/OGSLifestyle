@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { createMyCharacter, getMyPlayer } from '@/server/services/playerService';
 import { ServiceError } from '@/server/services/errors';
+import { checkSameOriginJson } from '@/lib/http/sameOrigin';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,8 @@ export async function GET() {
 
 /** POST /api/player { characterName, avatar } → creates the character. Any "cash" field is ignored. */
 export async function POST(request: Request) {
+  const origin = checkSameOriginJson(request.headers);
+  if (!origin.ok) return NextResponse.json({ error: origin.reason }, { status: origin.status });
   const db = await getServerSupabase();
   if (!db) return notConfigured();
   let body: unknown;

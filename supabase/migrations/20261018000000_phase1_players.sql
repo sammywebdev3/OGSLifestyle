@@ -3,14 +3,14 @@
 -- Security model
 --   * Row Level Security is ON for every table.
 --   * Signed-in players may only SELECT their own rows.
---   * There are NO insert/update/delete policies, and those privileges are
---     revoked: the browser can never write game data directly.
+--   * There are NO insert/update/delete policies, and client roles hold only
+--     SELECT on these tables (Supabase grants ALL by default, which would
+--     include TRUNCATE — that bypasses RLS — so we revoke everything first).
+--     The browser can never write game data directly.
 --   * A character is created only through public.create_character(), which runs
 --     as SECURITY DEFINER, validates input, and sets starting cash/items itself.
 --   * Future economic actions (pay, buy, sell) must follow the same pattern:
 --     validated server-side functions in a single transaction.
-
-create extension if not exists pgcrypto;
 
 create table public.players (
   id             uuid primary key default gen_random_uuid(),
@@ -55,19 +55,20 @@ create policy "inventory items: read own" on public.inventory_items
     )
   );
 
--- Belt and braces: no direct writes from client roles even if a policy is added by mistake.
-revoke insert, update, delete on public.players, public.inventories, public.inventory_items from anon, authenticated;
+-- Client roles may only read (and RLS limits what they read). No writes, no TRUNCATE.
+revoke all on public.players, public.inventories, public.inventory_items from anon, authenticated;
+grant select on public.players, public.inventories, public.inventory_items to authenticated;
 
 -- Create the caller's character. Starting cash and items are decided HERE, never by the client.
 create or replace function public.create_character(p_name text, p_avatar jsonb)
 returns public.players
 language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $$
 declare
   v_uid    uuid := auth.uid();
-  v_name   text := btrim(regexp_replace(coalesce(p_name, ''), '\s+', ' ', 'g'));
+  v_name   text := btrim(regexp_replace(normalize(coalesce(p_name, ''), nfc), '\s+', ' ', 'g'));
   v_player public.players;
   v_inv    uuid;
 begin
@@ -75,7 +76,13 @@ begin
     raise exception 'You must be signed in to create a character' using errcode = '28000';
   end if;
 
-  if char_length(v_name) < 3 or char_length(v_name) > 20 or v_name !~ '^[[:alpha:]][[:alpha:]'' .-]*$' then
+  -- Allow-list by Unicode code point (independent of the database locale), matching
+  -- NAME_PATTERN in src/lib/validation/character.ts exactly:
+  --   letters: A-Z a-z, Latin-1 letters (no × ÷), Latin Extended-A/B, IPA (Hausa ɓ ɗ),
+  --            Latin Extended Additional (Yoruba/Igbo Ọ ẹ ṣ ị ụ ṅ)
+  --   after the first letter also: combining tone marks, space, apostrophe, dot, hyphen.
+  if char_length(v_name) < 3 or char_length(v_name) > 20
+     or v_name !~ '^[A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02AF\u1E00-\u1EFF][A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02AF\u1E00-\u1EFF\u0300-\u036F'' .-]*$' then
     raise exception 'Invalid character name' using errcode = '22023';
   end if;
 

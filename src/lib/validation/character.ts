@@ -6,7 +6,16 @@
 
 export const NAME_MIN = 3;
 export const NAME_MAX = 20;
-const NAME_PATTERN = /^[\p{L}][\p{L}' .-]*$/u;
+/**
+ * MUST stay identical to the allow-list in create_character()
+ * (supabase/migrations/20261018000000_phase1_players.sql):
+ * Latin letters incl. Latin-1 (minus × ÷), Extended-A/B, IPA (Hausa ɓ ɗ) and
+ * Latin Extended Additional (Yoruba/Igbo Ọ ẹ ṣ ị ụ ṅ); after the first letter
+ * also combining tone marks, space, apostrophe, dot and hyphen.
+ * All of these are BMP characters, so JS `.length` equals SQL `char_length`.
+ */
+const LETTER = 'A-Za-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02AF\u1E00-\u1EFF';
+export const NAME_PATTERN = new RegExp(`^[${LETTER}][${LETTER}\u0300-\u036F' .-]*$`);
 
 const BODY = ['masc', 'femme'] as const;
 const SKIN = ['deep', 'brown', 'warm', 'light'] as const;
@@ -22,8 +31,9 @@ export interface ValidAvatar {
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; errors: string[] };
 
+/** NFC-normalise, collapse whitespace and trim — same steps as the database function. */
 export function normaliseName(raw: unknown): string {
-  return typeof raw === 'string' ? raw.trim().replace(/\s+/g, ' ') : '';
+  return typeof raw === 'string' ? raw.normalize('NFC').replace(/\s+/g, ' ').trim() : '';
 }
 
 export function validateCharacterName(raw: unknown): ValidationResult<string> {
@@ -31,7 +41,7 @@ export function validateCharacterName(raw: unknown): ValidationResult<string> {
   const errors: string[] = [];
   if (name.length < NAME_MIN) errors.push(`Name must be at least ${NAME_MIN} characters.`);
   if (name.length > NAME_MAX) errors.push(`Name must be at most ${NAME_MAX} characters.`);
-  if (name && !NAME_PATTERN.test(name)) errors.push('Name can only use letters, spaces, apostrophes, dots and hyphens.');
+  if (name && !NAME_PATTERN.test(name)) errors.push('Name must start with a letter and use only letters (accents like Ọ, ẹ, ṣ are fine), spaces, apostrophes, dots and hyphens.');
   return errors.length ? { ok: false, errors } : { ok: true, value: name };
 }
 

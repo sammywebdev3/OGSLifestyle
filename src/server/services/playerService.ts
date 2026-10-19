@@ -44,6 +44,7 @@ export async function createMyCharacter(db: Db, body: unknown): Promise<PlayerSn
   if (!input.ok) throw new ServiceError(400, 'Please fix your character details.', input.errors);
   const { error } = await db.rpc('create_character', { p_name: input.value.characterName, p_avatar: { ...input.value.avatar } });
   if (error) {
+    if (error.code === '28000') throw new ServiceError(401, 'Please sign in.');
     if (error.code === '23505') throw new ServiceError(409, 'You already have a character.');
     if (error.code === '22023') throw new ServiceError(400, error.message);
     throw new ServiceError(500, 'Could not create your character.');

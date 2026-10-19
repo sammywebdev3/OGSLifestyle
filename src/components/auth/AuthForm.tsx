@@ -2,26 +2,43 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Button, ButtonLink } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Notice } from '@/components/ui/Notice';
 import { signIn, signUp } from '@/features/auth/auth';
 import { usePlayer } from '@/features/player/PlayerProvider';
+import { AUTH_ERROR_MESSAGES, codeFromSupabaseError, type AuthErrorCode } from '@/features/auth/authErrors';
+import { Spinner } from '@/components/ui/Spinner';
 
 type Mode = 'login' | 'register';
 
-export function AuthForm({ mode }: { mode: Mode }) {
+export function AuthForm({ mode, errorCode = null }: { mode: Mode; errorCode?: AuthErrorCode | null }) {
   const router = useRouter();
-  const { onlineAvailable, refresh } = usePlayer();
+  const { onlineAvailable, refresh, status, mode: playerMode } = usePlayer();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(errorCode ? AUTH_ERROR_MESSAGES[errorCode] : null);
   const [info, setInfo] = useState<string | null>(null);
+
+  // Some Supabase redirects put the error in the URL hash, which the server never sees.
+  useEffect(() => {
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const code = codeFromSupabaseError(hash.get('error_code'), hash.get('error'));
+    if (code) setError(AUTH_ERROR_MESSAGES[code]);
+  }, []);
+
+  // Already signed in online? Go straight on. (Guests may still sign in here.)
+  const signedInOnline = playerMode === 'online' && (status === 'ready' || status === 'no-character');
+  useEffect(() => {
+    if (signedInOnline) router.replace(status === 'ready' ? '/apartment' : '/create');
+  }, [signedInOnline, status, router]);
+  if (signedInOnline) return <Spinner label="You're already signed in…" />;
 
   if (!onlineAvailable) {
     return (
       <Card>
         <h1 className="font-display text-2xl font-black">{mode === 'login' ? 'Sign in' : 'Create account'}</h1>
+        {error ? <div className="mt-4"><Notice tone="error">{error}</Notice></div> : null}
         <div className="mt-4"><Notice tone="warn">Online accounts aren&apos;t set up on this server yet (Supabase isn&apos;t configured). You can still try the game as a guest — your progress stays in this browser only.</Notice></div>
         <ButtonLink href="/create?mode=guest" variant="primary" className="mt-5 w-full">Play as guest</ButtonLink>
       </Card>

@@ -3,7 +3,7 @@ import type { AvatarSelection } from '@/types/player';
 import type { Direction } from '@/types/game';
 import type { GameBus } from '../events';
 import { depthOf, gridToScreen, moveWithCollision, screenDirToGrid } from '../iso/isoMath';
-import { BUILDINGS, INTERACTABLES, MAP_H, MAP_W, PROPS, SPAWN, buildBlockedSet, isBlockedFn, tileAt, type BuildingDef, type InteractableDef } from '../world/starterArea';
+import { BUILDINGS, INTERACTABLES, LOCATION_ID, MAP_H, MAP_W, PROPS, SPAWN, buildBlockedSet, isBlockedFn, tileAt, type BuildingDef, type InteractableDef } from '../world/starterArea';
 import { TILE_COLORS, hex } from '../render/colors';
 import { drawBuilding, drawProp } from '../render/buildings';
 import { tile } from '../render/isoDraw';
@@ -71,7 +71,7 @@ export class StarterAreaScene extends Phaser.Scene {
       ui.on('world:pause', (p) => { this.paused = p; if (p) this.touch = { up: false, down: false, left: false, right: false }; }),
     );
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribe.forEach((u) => u()));
-    world.emit('ready');
+    world.emit('ready', { locationId: LOCATION_ID });
   }
 
   private drawFloor() {

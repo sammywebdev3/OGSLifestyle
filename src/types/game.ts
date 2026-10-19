@@ -1,4 +1,5 @@
 /** Types shared between the Phaser world and the React UI. */
+import type { LocationId } from './player';
 
 export type Direction = 'up' | 'down' | 'left' | 'right';
 
@@ -12,7 +13,8 @@ export interface InteractionTarget {
 
 /** Events sent from the game world to the UI. */
 export interface WorldToUiEvents {
-  ready: void;
+  /** The scene finished loading; it reports which location it represents. */
+  ready: { locationId: LocationId };
   'interaction:available': InteractionTarget | null;
   'interaction:triggered': InteractionTarget;
 }

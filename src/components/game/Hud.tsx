@@ -1,14 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import type { Player } from '@/types/player';
+import type { LocationId, Player } from '@/types/player';
 import type { PlayerMode } from '@/features/player/PlayerProvider';
 import { LOCATIONS, SKIN_TONES, OUTFIT_COLORS } from '@/config/game';
 import { CashBadge } from '@/components/player/CashBadge';
 
 /** Top HUD: who you are, your cash, where you are, and quick buttons. */
-export function Hud({ player, mode, onInventory }: { player: Player; mode: PlayerMode; onInventory: () => void }) {
-  const loc = LOCATIONS['kuto-street'];
+export function Hud({ player, mode, locationId, onInventory }: { player: Player; mode: PlayerMode; locationId: LocationId; onInventory: () => void }) {
+  const loc = LOCATIONS[locationId];
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-2 p-3">
       <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-adire-900/80 py-1 pl-1 pr-3 text-cream shadow-card backdrop-blur">
