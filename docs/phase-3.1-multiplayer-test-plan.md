@@ -39,7 +39,8 @@ The migration file is `supabase/migrations/20261019000000_phase3_1_multiplayer.s
    - Put `commit;` on the last line.
    - Run.
 
-   If anything fails, nothing is applied. **Do not run it a second time** if it succeeded.
+   If anything fails, nothing is applied. The migration never replaces or drops anything: if one of its objects
+   already exists, it fails and rolls back. **Do not run it a second time** if it succeeded.
 3. **Verify (read-only).** Expected result:
    - Two functions: `get_player_profiles` with `true` and `{search_path=""}`; `mp_my_player_id` with `false` and `{search_path=""}`.
    - Three `mp:` policies on `realtime.messages`, all for `{authenticated}`.
@@ -52,12 +53,23 @@ The migration file is `supabase/migrations/20261019000000_phase3_1_multiplayer.s
 4. Re-run `supabase/verify/phase1_live_check.sql`. All Phase 1 checks should still be `true`; this migration doesn't touch
    them.
 
+### Undo (only if needed)
+
+Run `supabase/rollback/20261019000000_phase3_1_multiplayer_down.sql` in a new query, wrapped in `begin;` … `commit;`.
+- It removes only the 3 `mp:` policies and the 2 functions.
+- No table or player data is touched.
+- The game keeps working; multiplayer just shows "Multiplayer offline".
+- `npm run test:db` checks this on a throwaway database.
+
 ### 2b. Realtime settings
 
 Supabase → **Realtime → Settings**.
 
 - **Recommended: turn off "Allow public access"**, so only private channels (with the policies above) can be used. This
   game uses no public channels.
+  - My understanding of the Realtime server is that public and private channels with the same name are kept apart, so
+    this is extra protection, not a requirement.
+  - I haven't checked that against a live project.
 - Leave the other settings at their defaults.
 
 ## 3. Two-account test
@@ -89,7 +101,17 @@ Test on the Vercel **Preview** of this branch, or on production after a merge. B
 **If the HUD shows "Multiplayer offline":** the private channel was refused. Check that 2a was applied and that both
 accounts have a character. The rest of the game should still work solo.
 
-## 4. Automated checks (already run for this branch)
+## 4. What has and has not been verified
+
+| Claim | How it was checked | Real Supabase server? |
+|---|---|---|
+| Policy rules: only the owner can send on their topic; no character means no access; anon is refused | `npm run test:db`, against a stand-in `realtime.messages` table and `realtime.topic()` (`supabase/tests/setup/realtime_stub.sql`) on the official Supabase Postgres image | **No.** Join checks are emulated the way Realtime performs them (insert/select under the user's role with `realtime.topic` set). |
+| Client behaviour: join, leave, reconnect, two tabs, impersonation attempt, denial | `npm test`, client against an in-memory hub that applies the same rules | **No** |
+| Remote characters render, glide and disappear in Phaser | Browser check with injected events | **No** (no network) |
+| Migration fails safely, rollback removes only its objects | `npm run test:db` | Postgres only, **not the hosted project** |
+| Realtime enforces the policies for private channels, and private and public channels are separate | Supabase's documented behaviour | **Not yet.** Steps 2 to 8 of section 3 are the first real check. |
+
+## 5. Automated checks (already run for this branch)
 
 - `npm test`: protocol validation, roster join/leave/duplicates/reconnect, movement timing, and the client wired to an
   in-memory Realtime stand-in. The stand-in applies the policy rules; it's not the real server.

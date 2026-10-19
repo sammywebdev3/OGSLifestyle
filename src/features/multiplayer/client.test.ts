@@ -114,11 +114,14 @@ class FakeHub {
   }
 }
 
-interface Probe { client: MultiplayerClient; events: RosterEvent[]; statuses: MultiplayerStatus[]; visible: number }
+interface Probe { client: MultiplayerClient; events: RosterEvent[]; statuses: MultiplayerStatus[]; visible: number; closedChannels: number }
 
 function connect(hub: FakeHub, playerId: string | null, asPlayer = playerId ?? A): Probe {
-  const probe = { events: [] as RosterEvent[], statuses: [] as MultiplayerStatus[], visible: 0 } as Probe;
-  probe.client = new MultiplayerClient(hub.db(playerId) as any, asPlayer, ROOM, BOUNDS, {
+  const probe = { events: [] as RosterEvent[], statuses: [] as MultiplayerStatus[], visible: 0, closedChannels: 0 } as Probe;
+  const db = hub.db(playerId);
+  const remove = db.removeChannel;
+  db.removeChannel = async (ch: FakeChannel) => { probe.closedChannels++; return remove(ch); };
+  probe.client = new MultiplayerClient(db as any, asPlayer, ROOM, BOUNDS, {
     onStatus: (s) => probe.statuses.push(s),
     onEvents: (events, visible) => { probe.events.push(...events); probe.visible = visible; },
   });
@@ -229,6 +232,8 @@ test('without permission (anon / no character) the client reports "unavailable" 
   const anon = connect(hub, null); clients.push(anon);
   await anon.client.start(); await tick();
   assert.equal(anon.statuses.at(-1), 'unavailable');
+  assert.equal(anon.statuses.filter((st) => st === 'unavailable').length, 1, 'reported once');
+  assert.equal(anon.closedChannels, 2, 'both channels closed, so realtime-js stops retrying the join');
   anon.client.sendLocal({ x: 1, y: 1, facing: 'right', moving: true }); // no-op, no throw
 });
 

@@ -100,7 +100,14 @@ export class MultiplayerClient {
   stop(): void {
     if (this.stopped) return;
     this.stopped = true;
+    this.closeAll();
+  }
+
+  /** Hide everyone and close every channel (also stops realtime-js from retrying). */
+  private closeAll(): void {
     if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.ready = { room: false, own: false };
     this.emit(this.roster.clear());
     for (const ch of this.remoteChannels.values()) void this.db.removeChannel(ch);
     this.remoteChannels.clear();
@@ -165,10 +172,15 @@ export class MultiplayerClient {
       if (this.ready.room && this.ready.own) this.setStatus('online');
       return;
     }
-    // realtime-js retries joins by itself; a permission error will not fix itself.
+    // realtime-js retries failed joins by itself. That helps after a network drop,
+    // but a permission error will not fix itself: stop, instead of asking the
+    // database to re-check the policies every few seconds from every open tab.
     const denied = /unauthori[sz]ed|permission|not allowed/i.test(err?.message ?? '');
-    if (denied) console.warn('Multiplayer not authorised for this room:', err?.message);
-    this.setStatus(denied ? 'unavailable' : 'reconnecting');
+    if (!denied) { this.setStatus('reconnecting'); return; }
+    console.warn('Multiplayer not authorised for this room:', err?.message);
+    this.stopped = true;
+    this.closeAll();
+    this.setStatus('unavailable');
   }
 
   private setStatus(status: MultiplayerStatus): void {

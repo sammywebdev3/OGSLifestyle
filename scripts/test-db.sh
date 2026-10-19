@@ -114,6 +114,23 @@ for f in "$ROOT"/supabase/tests/*.test.sql; do
   psql -q -v ON_ERROR_STOP=1 -f "$f" 2>&1 | sed -n 's/^psql:[^ ]* NOTICE:  //p; s/^NOTICE:  //p; /^==/p; /FAIL/p; /ERROR/p'
 done
 
+echo "▶ multiplayer migration: fail-safe re-apply and rollback script"
+MP_MIGRATION="$ROOT/supabase/migrations/20261019000000_phase3_1_multiplayer.sql"
+MP_DOWN="$ROOT/supabase/rollback/20261019000000_phase3_1_multiplayer_down.sql"
+mp_state() { psql -X -At -c "select (select count(*) from pg_policies where schemaname = 'realtime' and policyname like 'mp:%') || '/' || (select count(*) from pg_proc where proname in ('mp_my_player_id', 'get_player_profiles') and pronamespace = 'public'::regnamespace) || '/' || (select count(*) from pg_policies where schemaname = 'public') || '/' || (select count(*) || ':' || sum(cash) from public.players)"; }
+before=$(mp_state)
+[ "${before%%/*}" = "3" ] || { echo "FAIL: expected 3 mp policies before the checks, got $before" >&2; exit 1; }
+# Applying the migration a second time must fail (no silent replace) and change nothing.
+if psql -X -q -v ON_ERROR_STOP=1 -c "begin" -f "$MP_MIGRATION" -c "commit" >/dev/null 2>&1; then echo "FAIL: re-applying the multiplayer migration succeeded" >&2; exit 1; fi
+[ "$(mp_state)" = "$before" ] || { echo "FAIL: failed re-apply changed something: $before -> $(mp_state)" >&2; exit 1; }
+echo "PASS: re-applying the migration fails and changes nothing ($before)"
+# The rollback script removes exactly the multiplayer objects; Phase 1 policies and data stay.
+after=$(psql -X -At -v ON_ERROR_STOP=1 -c "begin" -f "$MP_DOWN" -c "select (select count(*) from pg_policies where schemaname = 'realtime' and policyname like 'mp:%') || '/' || (select count(*) from pg_proc where proname in ('mp_my_player_id', 'get_player_profiles') and pronamespace = 'public'::regnamespace) || '/' || (select count(*) from pg_policies where schemaname = 'public') || '/' || (select count(*) || ':' || sum(cash) from public.players)" -c "rollback" | grep -E '^[0-9]+/')
+expected="0/0/${before#*/*/}"
+[ "$after" = "$expected" ] || { echo "FAIL: rollback script left $after, expected $expected" >&2; exit 1; }
+echo "PASS: rollback script removes the 3 policies and 2 functions only; Phase 1 policies and player data unchanged ($after)"
+[ "$(mp_state)" = "$before" ] || { echo "FAIL: rollback test leaked: $(mp_state)" >&2; exit 1; }
+
 echo "▶ concurrency tests"
 AVATAR='{"body":"masc","skin":"deep","headwear":"fila","outfit":"ogun"}'
 as_user() { # $1 = user id, $2 = SQL; prints the SQLSTATE of any error (verbose)

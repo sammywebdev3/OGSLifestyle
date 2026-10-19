@@ -13,10 +13,24 @@
 --     Every policy requires a signed-in user who has a character.
 --
 -- Topic format must match src/features/multiplayer/protocol.ts.
+--
+-- Fail-safe: plain CREATE FUNCTION / CREATE POLICY (no "or replace", no drops), so
+-- if any of these objects already exists the whole migration fails and, applied
+-- inside begin; ... commit;, changes nothing. Undo script (not a migration):
+-- supabase/rollback/20261019000000_phase3_1_multiplayer_down.sql
+
+-- Stop early with a clear message if the project has no Realtime messages table.
+do $$
+begin
+  if to_regclass('realtime.messages') is null then
+    raise exception 'realtime.messages does not exist: Realtime is not set up on this project';
+  end if;
+end;
+$$;
 
 -- The caller's player id, or null for anon / users without a character.
 -- SECURITY INVOKER: it reads public.players under the caller's own select-own RLS.
-create or replace function public.mp_my_player_id()
+create function public.mp_my_player_id()
 returns uuid
 language sql
 stable
@@ -31,7 +45,7 @@ grant execute on function public.mp_my_player_id() to authenticated;
 
 -- Names and avatars of other players (no cash, location, user id or inventory).
 -- SECURITY DEFINER because players RLS only lets a user read their own row.
-create or replace function public.get_player_profiles(p_player_ids uuid[])
+create function public.get_player_profiles(p_player_ids uuid[])
 returns table (player_id uuid, character_name text, avatar jsonb)
 language plpgsql
 stable
