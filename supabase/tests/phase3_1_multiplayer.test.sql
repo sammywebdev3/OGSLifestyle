@@ -91,6 +91,20 @@ select tests.expect_error('select * from public.get_player_profiles(null)', '220
 select tests.expect_error('select * from public.get_player_profiles(array(select gen_random_uuid() from generate_series(1, 51)))', '22023', 'more than 50 ids is rejected');
 select tests.ok((select count(*) = 1 from public.players), 'A still sees only their own row in players (RLS unchanged)');
 
+-- get_player_profiles answers only for ids the caller already knows. These checks pin
+-- down that a player cannot discover or guess ids through it or anything else.
+do $$
+declare found bigint := 0;
+begin
+  for i in 1..20 loop -- 1,000 random guesses, in batches of the maximum 50
+    found := found + (select count(*) from public.get_player_profiles(array(select gen_random_uuid() from generate_series(1, 50))));
+  end loop;
+  perform tests.ok(found = 0, '1,000 guessed player ids return nothing (the function cannot list or search players)');
+end $$;
+select tests.expect_error($$select * from public.get_player_profiles(array['%']::uuid[])$$, '22P02', 'no wildcard or pattern lookup: ids must be real uuids');
+select tests.ok((select count(*) = 0 from public.players where id <> public.mp_my_player_id()), 'A cannot see any other player id through the players table');
+select tests.ok((select count(*) = 0 from public.inventories i where i.player_id <> public.mp_my_player_id()), 'A cannot see any other player id through inventories');
+
 \echo '== 14. Player A: Realtime channel authorization'
 select tests.ok(tests.rt_can(:'room_topic', 'presence', 'write'), 'A can join room presence');
 select tests.ok(tests.rt_can(:'room_topic', 'presence', 'read'), 'A can see room presence');
@@ -114,7 +128,19 @@ select tests.ok(not tests.rt_can(:'a_topic', 'broadcast', 'write'), 'B cannot br
 select tests.ok(tests.rt_can(:'b_topic', 'broadcast', 'write'), 'B can broadcast on B''s own topic');
 reset role;
 
-\echo '== 16. Nothing persistent changed (as postgres)'
+\echo '== 16. No other way to obtain player ids (as postgres)'
+-- Regression guard: if a future migration adds a function or view that clients can
+-- call, these fail until someone checks it cannot leak other players' ids.
+select tests.ok((select array_agg(p.proname::text order by p.proname) from pg_proc p
+                 where p.pronamespace = 'public'::regnamespace and has_function_privilege('authenticated', p.oid, 'execute'))
+                = array['create_character', 'get_player_profiles', 'mp_my_player_id'],
+                'authenticated can call exactly create_character, get_player_profiles and mp_my_player_id');
+select tests.ok(not exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and has_function_privilege('anon', p.oid, 'execute')),
+                'anon can call no public function');
+select tests.ok((select count(*) = 0 from pg_class where relnamespace = 'public'::regnamespace and relkind in ('v', 'm')),
+                'no views or materialized views in public');
+
+\echo '== 17. Nothing persistent changed (as postgres)'
 select tests.ok((select count(*) = 2 from public.players), 'still exactly two players');
 select tests.ok((select bool_and(cash = 50000) from public.players), 'cash unchanged');
 

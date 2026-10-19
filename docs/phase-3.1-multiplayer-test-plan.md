@@ -19,6 +19,26 @@ Two signed-in players in **Kuto Street** see each other's characters and movemen
 - **Guests** play solo. Nobody sees them and they see nobody.
 - **If Realtime fails,** the game keeps running solo and the HUD shows the state.
 
+### Accepted exposure: profile lookup is not limited to your current room
+
+`get_player_profiles` returns the **name and avatar** of any player whose id the caller already knows, even if that
+player has left the room. This is accepted, not fixed, for these reasons:
+
+- **Learning an id is limited.** A player's id reaches other browsers only as a presence key, while that player is in a
+  room you can join, and they can already see that player's name and avatar there. RLS hides every other player's row,
+  and the 122-bit random ids can't be guessed. `npm run test:db` checks 1,000 guesses, the absence of any other function
+  or view that returns ids, and the absence of pattern lookups.
+- **What it reveals is limited.** Only the in-game display name and avatar. Never the user id, email, cash, location or
+  inventory.
+- **The database can't check room membership.** Presence lives only in the Realtime server, not in Postgres. Enforcing it
+  would need a new table written by heartbeats from every player (persistent writes this design avoids).
+- **That check would also break joining.** A newcomer's profile is requested as soon as they appear, often before their
+  first heartbeat row exists. The client never re-asks for an id that came back empty, so they would stay invisible.
+- **It still wouldn't be a real boundary.** Any player with a character may join any room, so it would only hide players
+  who were seen earlier and are now offline.
+
+Revisit this if a future feature makes names sensitive, or exposes player ids outside rooms (for example leaderboards).
+
 ## 2. One-time setup (needs your explicit approval; changes the live project)
 
 ### 2a. Apply the migration (Supabase → SQL Editor → new, empty query)
