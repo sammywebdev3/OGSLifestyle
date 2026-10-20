@@ -222,6 +222,28 @@ Players can chat, see speech bubbles, and send emotes (👋 🤝 😂 ❤️) to
 - **Code:** `src/features/multiplayer/chat.ts` and `bubbles.ts`, `src/components/game/ChatPanel.tsx` and `EmoteBar.tsx`.
 - **Test plan:** [`docs/phase-3.2-interaction-test-plan.md`](docs/phase-3.2-interaction-test-plan.md).
 
+## Land ownership (Phase 3.3A)
+
+Players can buy one of 12 plots on Kuto Street from the game: basic ₦25,000, standard ₦50,000, premium ₦100,000.
+Each plot has one owner, kept in the database, so ownership survives reloads.
+
+- **Server authority:** the browser sends only `{ plotKey, requestId }`.
+  - `buy_land_plot()` takes the buyer from the session and the price from the database.
+  - It locks the player and plot rows, checks cash, deducts the price, assigns the owner and writes balanced ledger
+    lines, all in one transaction.
+  - A retried request (same `requestId`) is answered again and never charged twice.
+- **Ledger:** cash that existed before this phase, including everyone's ₦50,000 starting cash, is *pre-ledger*.
+  From Phase 3.3A on, every cash change writes a ledger line with the balance after it, against a `game:land-sales`
+  counterparty.
+- **Code:**
+  - `src/features/land/`, `src/server/services/landService.ts`, `src/app/api/land/`
+  - `src/components/game/LandDialog.tsx` and `LandPanel.tsx`
+- **Migration:** `supabase/migrations/20261020000000_phase3_3a_land.sql`, with its rollback script in
+  `supabase/rollback/`. It must be applied to the live project (with approval) before land works there. Until then
+  the 🗺️ panel says "Land is not open on this server yet".
+- **Not in this phase:** trading between players, building, companies, and new plot releases.
+- **Plan, rollback and manual tests:** [`docs/phase-3.3a-land-test-plan.md`](docs/phase-3.3a-land-test-plan.md).
+
 ## Deploying to Vercel
 
 1. Import the GitHub repo in Vercel. `vercel.json` sets the framework to Next.js. This matters for a Vercel project
@@ -269,11 +291,11 @@ src/
                             database.types.ts (generated) + rows.ts (aliases)
     validation/             Shared input validation (client + server)
   server/                   Server-side game services (import 'server-only')
-    services/playerService.ts
+    services/playerService.ts, landService.ts
     mappers/player.ts
   config/game.ts            Game constants (avatar options, items, starter values)
   types/                    Shared TypeScript types (player, inventory, game events)
-supabase/migrations/        SQL schema, RLS policies, create_character()
+supabase/migrations/        SQL schema, RLS policies, create_character(), land registry and ledger
 ```
 
 ## Gameplay prototype
@@ -283,6 +305,7 @@ supabase/migrations/        SQL schema, RLS policies, create_character()
 | Move | WASD or arrow keys. Movement follows the screen: "up" walks up the screen. | On-screen D-pad (phones and tablets) |
 | Interact | **E**, Space or Enter, near a glowing ring | The yellow prompt button |
 | Inventory | **I** | 🎒 button |
+| Land (plots for sale, your land) | **L**, or stand on a plot and press **E** | 🗺️ button |
 | Back to the apartment | — | 🏠 button, or interact with the apartment door |
 
 - **The map:** a Kuto street corner with Kuto Court (your apartment), Iya Basira Buka, Blessed POS, Mama T Stores,
