@@ -195,6 +195,21 @@ npm run test:db   # needs Docker and the psql client
 - **Safety:** the container is removed afterwards. The script never reads `DATABASE_URL` or any Supabase credentials,
   so it cannot touch a real project.
 
+## Multiplayer (Phase 3.1)
+
+Signed-in players in the same area see each other move. The code lives in `src/features/multiplayer/`.
+
+- **Transport:** Supabase Realtime **private** channels.
+  - `mp:<room>` carries presence (who is here).
+  - `mp:<room>:<player id>` carries one player's movement. Database policies let only that player send on it.
+- **Profiles:** names and avatars come from `get_player_profiles()`.
+- **Nothing is saved:** positions are never written to the database.
+- **Migration:** `supabase/migrations/20261019000000_phase3_1_multiplayer.sql` adds two functions and three Realtime
+  policies, and no tables. It must be applied to the live project (with approval) before multiplayer can connect.
+  Until then the game runs solo and the HUD says "Multiplayer offline".
+- **Guests** always play solo.
+- **Setup and the two-account test plan:** [`docs/phase-3.1-multiplayer-test-plan.md`](docs/phase-3.1-multiplayer-test-plan.md).
+
 ## Deploying to Vercel
 
 1. Import the GitHub repo in Vercel. `vercel.json` sets the framework to Next.js. This matters for a Vercel project
