@@ -72,7 +72,49 @@ The ledger starts with this migration.
    select count(*), sum(cash) from public.players;
    ```
 
-4. **Regenerate the database types** from the live project (see README → Database types). Run `npm run typecheck`.
+4. **Run the read-only verification script** `supabase/verify/phase3_3a_land_check.sql` (section 2a).
+5. **Regenerate the database types** from the live project (see README → Database types). Run `npm run typecheck`.
+
+### 2a. Read-only verification script
+
+`supabase/verify/phase3_3a_land_check.sql` confirms that a database matches the reviewed migration. It only reads system
+catalogs and counts rows. It returns no player ids, user ids, names or balances.
+
+**How to run it safely:** Supabase → SQL Editor → a new, empty query. Paste exactly this, then **Run**:
+
+```sql
+begin transaction read only;
+-- paste the whole of supabase/verify/phase3_3a_land_check.sql here
+rollback;
+```
+
+In a read-only transaction, any write would fail, so nothing can change.
+
+**Expected result:** every row has `ok = true`, and the first row, `00 ALL CHECKS`, is `true`.
+
+| Rows | What they check |
+|---|---|
+| 01–05 | The 4 land tables exist. RLS is on and not forced. There are no policies on them. `anon`, `authenticated` and PUBLIC have no table privileges and cannot use the ledger sequence. |
+| 06–08 | Columns, types, defaults and constraints match the reviewed migration (fingerprints). The 3 append-only triggers and the deferred balance check are present and enabled. |
+| 09–12 | The 5 functions exist with the reviewed signatures, with exactly one `buy_land_plot(text, uuid)` returning `jsonb`. Their SECURITY DEFINER flags, empty `search_path` and `postgres` owner match. Only the 3 land functions are callable, by `authenticated` only. Each function body matches the reviewed version: a re-indented body (which the SQL Editor may produce) is reported as "same code". |
+| 13–14 | Exactly the 12 seeded plots, with their keys, tiers, footprints and prices (₦25,000 / ₦50,000 / ₦100,000). |
+| 15–18 | Ownership and money are consistent: a plot is owned exactly when it has one purchase by its owner. Every transaction has 2 ledger lines summing to 0. Each player's latest ledger balance equals their cash. No cash is negative. Stored requests match their transactions. |
+| 19–21 | Phase 1 is untouched: same policy fingerprint as the Phase 1 live check, `authenticated` has SELECT only, and there are no triggers on players or inventories. Exactly the 6 reviewed functions are callable, and `anon` can call none. |
+| i1 | Information, not a check. It must say **yes** right after the migration is applied (no plot owned, empty ledger), and **no** once players have bought land. Both are healthy. |
+
+**If something fails:**
+
+- An error such as `relation "public.land_plots" does not exist` means the migration is not applied to this database.
+- Any `false` row means the database differs from the reviewed migration. **Stop and report the row and its detail**;
+  do not continue testing.
+- Check 15 assumes there is no trading between players (true in Phase 3.3A). It must be revised when trading arrives.
+
+`npm run test:db` checks that the script:
+
+- passes, inside a READ ONLY transaction, on a freshly migrated database (on Postgres 15.8 and 17.6);
+- passes after real purchases, and its output contains no ids or names;
+- accepts a re-indented function body;
+- fails on 28 known-bad structural changes and 4 inconsistent ownership/ledger states.
 
 **Rollback:** `supabase/rollback/20261020000000_phase3_3a_land_down.sql`. It is not a migration.
 

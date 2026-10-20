@@ -109,6 +109,59 @@ replace(src, 'Ọ ẹ', 'O e')|Ọ ẹ
 BADBODY
 echo "PASS: check 14 rejects 4 re-indented body changes whose flags are still true and the diff names the changed line"
 
+echo "▶ land verification script (supabase/verify/phase3_3a_land_check.sql), fresh database"
+LAND_VERIFY="$ROOT/supabase/verify/phase3_3a_land_check.sql"
+land_rows() { psql -X -At -F'|' -v ON_ERROR_STOP=1 "$@"; }
+land_ok() { land_rows "$@" | grep '^00 ALL CHECKS|' | cut -d'|' -f2; }
+# Read-only proof: it must run inside a READ ONLY transaction (any write would fail there).
+out=$(land_rows -c "begin transaction read only" -f "$LAND_VERIFY" -c "rollback")
+echo "$out" | grep -q '^00 ALL CHECKS|t|' && echo "$out" | grep -q '^i1 fresh install.*|t|yes:' \
+  || { psql -X -c "begin transaction read only" -f "$LAND_VERIFY" -c "rollback"; echo "FAIL: land check does not pass on a freshly migrated database" >&2; exit 1; }
+echo "PASS: land check passes on the fresh migration inside a READ ONLY transaction ($(echo "$out" | grep -c '|t|') rows ok, fresh install = yes)"
+# Each known-bad change (inside a rolled-back transaction) must make the check fail.
+n=0
+while IFS= read -r bad; do
+  [ -n "$bad" ] || continue
+  r=$(land_ok -c "begin" -c "$bad" -f "$LAND_VERIFY" -c "rollback")
+  [ "$r" = "f" ] || { echo "FAIL: land check did not catch: $bad" >&2; exit 1; }
+  n=$((n+1))
+done <<'BAD'
+alter table public.land_plots disable row level security
+alter table public.ledger_entries force row level security
+create policy "leak" on public.land_plots for select to authenticated using (true)
+grant select on public.ledger_entries to authenticated
+grant insert on public.economic_requests to anon
+grant usage on sequence public.ledger_entries_id_seq to authenticated
+grant execute on function public.buy_land_plot(text, uuid) to anon
+grant execute on function public.buy_land_plot(text, uuid) to public
+revoke execute on function public.get_land_plots() from authenticated
+grant execute on function public.ledger_check_balanced() to authenticated
+alter function public.buy_land_plot(text, uuid) security invoker
+alter function public.get_my_land() set search_path = public
+drop trigger ledger_entries_append_only on public.ledger_entries
+alter table public.ledger_entries disable trigger ledger_entries_balanced
+alter table public.land_plots add column note text
+alter table public.land_plots drop constraint land_plots_price_check
+alter table public.ledger_entries alter column balance_after drop not null, alter column amount set default 1
+update public.land_plots set price = 1000 where plot_key = 'kuto-01'
+update public.land_plots set tile_x = 2 where plot_key = 'kuto-05'
+delete from public.land_plots where plot_key = 'kuto-12'
+insert into public.land_plots (plot_key, location_id, tier, price, tile_x, tile_y, width, depth) values ('kuto-13', 'kuto-street', 'basic', 25000, 5, 16, 1, 1)
+create function public.buy_land_plot(text, uuid, bigint) returns jsonb language sql as $$ select '{}'::jsonb $$
+do $d$ declare src text; begin select prosrc into src from pg_proc where oid = 'public.buy_land_plot(text,uuid)'::regprocedure; execute format('create or replace function public.buy_land_plot(p_plot_key text, p_idempotency_key uuid) returns jsonb language plpgsql security definer set search_path = %L as %L', '', replace(src, 'if v_player.cash < v_price then', 'if false then')); end $d$
+do $d$ declare src text; begin select prosrc into src from pg_proc where oid = 'public.get_land_plots()'::regprocedure; execute format('create or replace function public.get_land_plots() returns table (plot_key text, location_id text, tier text, price bigint, tile_x smallint, tile_y smallint, width smallint, depth smallint, owner_name text, owned_by_me boolean) language plpgsql stable security definer set search_path = %L as %L', '', replace(src, 'o.character_name', 'o.character_name || o.user_id::text')); end $d$
+alter policy "players: read own" on public.players using (true)
+grant update on public.players to authenticated
+create trigger t before update on public.players for each row execute function suppress_redundant_updates_trigger()
+create function public.leak_players() returns setof public.players language sql security definer set search_path = '' as $$ select * from public.players $$
+BAD
+echo "PASS: land check fails on $n known-bad variants (RLS, policies, grants, sequence, definer, search_path, triggers, columns, constraints, prices, footprints, plot count, overloads, function bodies, Phase 1 policies/grants/triggers, extra callable function)"
+# Whitespace-only re-indentation of a function body (what the SQL Editor may do) is accepted and reported.
+out=$(land_rows -c "begin" -c "do \$d\$ declare src text; begin select prosrc into src from pg_proc where oid = 'public.buy_land_plot(text,uuid)'::regprocedure; execute format('create or replace function public.buy_land_plot(p_plot_key text, p_idempotency_key uuid) returns jsonb language plpgsql security definer set search_path = %L as %L', '', replace(src, chr(10), chr(10) || '    ')); end \$d\$" -f "$LAND_VERIFY" -c "rollback")
+echo "$out" | grep -q '^00 ALL CHECKS|t|' && echo "$out" | grep -q '^12 buy_land_plot body.*|t|match=same code' \
+  || { echo "$out"; echo "FAIL: land check rejects a whitespace-only re-indentation of buy_land_plot" >&2; exit 1; }
+echo "PASS: land check accepts a re-indented (whitespace-only) buy_land_plot body and reports it"
+
 echo "▶ running SQL tests"
 for f in "$ROOT"/supabase/tests/*.test.sql; do
   psql -q -v ON_ERROR_STOP=1 -f "$f" 2>&1 | sed -n 's/^psql:[^ ]* NOTICE:  //p; s/^NOTICE:  //p; /^==/p; /FAIL/p; /ERROR/p'
@@ -179,6 +232,27 @@ lexpected="0/0/$(echo "$lbefore" | cut -d/ -f3)/$(echo "$lbefore" | cut -d/ -f4)
 [ "$lafter" = "$lexpected" ] || { echo "FAIL: refund rollback left $lafter, expected $lexpected" >&2; exit 1; }
 [ "$(land_state)" = "$lbefore" ] || { echo "FAIL: land rollback test leaked: $(land_state)" >&2; exit 1; }
 echo "PASS: with ogs.rollback_refund = 'yes' the rollback refunds every player to pre-ledger cash and removes only the land objects ($lafter)"
+
+echo "▶ land verification script after purchases (players A and B bought plots in the SQL tests)"
+out=$(land_rows -c "begin transaction read only" -f "$LAND_VERIFY" -c "rollback")
+echo "$out" | grep -q '^00 ALL CHECKS|t|' && echo "$out" | grep -q '^i1 fresh install.*|t|no:' \
+  || { echo "$out"; echo "FAIL: land check does not pass after legitimate purchases" >&2; exit 1; }
+# It reports counts only: no player ids, user ids, transaction ids or character names.
+if echo "$out" | grep -qiE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|Ọlá|Bayo|Adéyẹmí'; then echo "FAIL: land check output contains ids or names" >&2; exit 1; fi
+echo "PASS: land check passes after purchases (fresh install = no) and its output holds no ids or names"
+n=0
+while IFS= read -r bad; do
+  [ -n "$bad" ] || continue
+  r=$(land_ok -c "begin" -c "$bad" -f "$LAND_VERIFY" -c "rollback")
+  [ "$r" = "f" ] || { echo "FAIL: land check did not catch: $bad" >&2; exit 1; }
+  n=$((n+1))
+done <<'BAD'
+update public.land_plots set owner_player_id = (select id from public.players order by id limit 1), acquired_at = now() where plot_key = 'kuto-12'
+update public.land_plots set acquired_at = null, owner_player_id = null where plot_key = 'kuto-07'
+with t as (insert into public.economy_transactions (kind, player_id, plot_id, amount) select 'land_purchase', p.id, l.id, 1000 from public.players p, public.land_plots l order by p.id, l.plot_key limit 1 returning id) insert into public.ledger_entries (transaction_id, account, amount) select id, 'game:land-sales', 1000 from t
+update public.players set cash = cash + 1 where id = (select player_id from public.ledger_entries where account = 'player' order by id limit 1)
+BAD
+echo "PASS: land check fails on $n inconsistent ownership/ledger states (plot owned without a purchase, purchase without an owner, unbalanced transaction, cash changed outside the ledger)"
 
 echo "▶ land (Phase 3.3A): concurrency tests"
 # Test-only plots (as postgres, disposable database only) so the 12 seeded plots stay as the SQL tests left them.
@@ -263,19 +337,33 @@ orig_md5=$(buy_md5)
 ORIG_BUY=$(mktemp)
 psql -X -At -c "select pg_get_functiondef('$BUY_SIG'::regprocedure)" >"$ORIG_BUY"
 trap 'rm -f "$ORIG_BUY"; cleanup' EXIT
-# SQL that replaces buy_land_plot with a copy whose body has $1 applied (an SQL expression over `src`).
+# SQL that replaces buy_land_plot with a copy of its body where each OLD text is replaced by NEW.
+# Arguments: OLD1 NEW1 [OLD2 NEW2 ...]. Every OLD must occur EXACTLY ONCE in the reviewed body,
+# otherwise the DO block raises "mutation did not apply" and nothing is replaced: a pattern that
+# drifted out of date can never silently turn into a no-op (or half-applied) mutant.
 mutate() {
-  echo "do \$d\$ declare src text; begin select prosrc into src from pg_proc where oid = '$BUY_SIG'::regprocedure; if $1 = src then raise exception 'mutation did not apply'; end if; execute format('create or replace function public.buy_land_plot(p_plot_key text, p_idempotency_key uuid) returns jsonb language plpgsql security definer set search_path = %L as %L', '', $1); end \$d\$"
+  local checks="" expr="src"
+  while [ $# -ge 2 ]; do
+    checks="$checks if (length(src) - length(replace(src, \$m\$$1\$m\$, ''))) / greatest(length(\$m\$$1\$m\$), 1) <> 1 then raise exception 'mutation did not apply: pattern must occur exactly once: %', \$m\$$1\$m\$; end if;"
+    expr="replace($expr, \$m\$$1\$m\$, \$m\$$2\$m\$)"
+    shift 2
+  done
+  echo "do \$d\$ declare src text; begin select prosrc into src from pg_proc where oid = '$BUY_SIG'::regprocedure; $checks execute format('create or replace function public.buy_land_plot(p_plot_key text, p_idempotency_key uuid) returns jsonb language plpgsql security definer set search_path = %L as %L', '', $expr); end \$d\$"
 }
-# probe <user1> <user2> <plot>: single-connection checks, as plain SQL that raises on failure. Prints PASS or the FAIL.
+# probe <user1> <user2> <plot>: single-connection checks as plain SQL. Each check raises "FAIL: <what>"
+# when its protection is missing, so a caught mutant names the protection that caught it.
 probe_sql() {
   cat <<SQL
 set role authenticated;
 select tests.claims('$1');
 do \$p\$ declare r jsonb; begin
   r := public.buy_land_plot('$3', '22222222-2222-4222-8222-222222222222');
-  r := public.buy_land_plot('$3', '22222222-2222-4222-8222-222222222222');
-  if not (r ->> 'replayed')::boolean then raise exception 'FAIL: retry was not replayed'; end if;
+  begin
+    r := public.buy_land_plot('$3', '22222222-2222-4222-8222-222222222222');
+  exception when others then
+    raise exception 'FAIL: retry was not replayed (got %: %)', sqlstate, sqlerrm;
+  end;
+  if not (r ->> 'replayed')::boolean then raise exception 'FAIL: retry was not replayed (charged again)'; end if;
 end \$p\$;
 select tests.claims('$2');
 select tests.expect_error(\$\$select public.buy_land_plot('$3', gen_random_uuid())\$\$, 'OG409', 'second buyer (with cash) refused');
@@ -286,41 +374,76 @@ select tests.expect_error(\$\$select public.buy_land_plot('test-20', gen_random_
 select tests.ok((select cash = 0 from public.players), 'buyer without cash still has ₦0');
 SQL
 }
-run_probe() { # $1 = mutation expression or empty; prints "pass" or "fail: <reason>"
-  out=$( { echo "begin;"; [ -n "$1" ] && echo "$(mutate "$1");"; probe_sql "$(user 23)" "$(user 24)" test-08; echo "rollback;"; } | psql -X -q -v ON_ERROR_STOP=1 2>&1 )
-  if echo "$out" | grep -qE 'FAIL|ERROR'; then echo "fail: $(echo "$out" | grep -E 'FAIL|ERROR' | head -1)"; else echo pass; fi
+# run_probe [OLD NEW ...]: applies the mutation (if any) and the probe in a rolled-back transaction.
+# Prints "pass", "unapplied: <why>" (the mutation could not be applied) or "fail: <first error line>".
+run_probe() {
+  local out
+  out=$( { echo "begin;"; [ $# -gt 0 ] && echo "$(mutate "$@");"; probe_sql "$(user 23)" "$(user 24)" test-08; echo "rollback;"; } | psql -X -q -v ON_ERROR_STOP=1 2>&1 )
+  if echo "$out" | grep -q 'mutation did not apply'; then echo "unapplied: $(echo "$out" | grep -m1 'mutation did not apply' | sed 's/^.*ERROR: *//')"
+  elif echo "$out" | grep -qE 'ERROR|FAIL'; then echo "fail: $(echo "$out" | grep -m1 -E 'ERROR|FAIL' | sed 's/^.*ERROR: *//')"
+  else echo pass; fi
 }
-[ "$(run_probe '')" = "pass" ] || { echo "FAIL: mutation probe does not pass on the real function: $(run_probe '')" >&2; exit 1; }
-while IFS='|' read -r label expr; do
-  r=$(run_probe "$expr")
-  case "$r" in fail:*) echo "PASS: removing $label is caught (${r#fail: })" | cut -c1-220 ;; *) echo "FAIL: removing $label was NOT caught" >&2; exit 1 ;; esac
-done <<'MUT'
-the idempotency lookup|replace(src, 'where player_id = v_player.id and idempotency_key = p_idempotency_key;', 'where false;')
-the already-sold checks|replace(replace(src, 'if v_plot.owner_player_id is not null then', 'if false then'), 'where id = v_plot.id and owner_player_id is null;', 'where id = v_plot.id;')
-the balance checks|replace(replace(src, 'if v_player.cash < v_price then', 'if false then'), 'where id = v_player.id and cash >= v_price', 'where id = v_player.id')
-MUT
-[ "$(buy_md5)" = "$orig_md5" ] || { echo "FAIL: a mutation leaked into the real function" >&2; exit 1; }
+# check_mutation <label> <expected failure text> OLD NEW [...]: the mutant must be applied AND be caught
+# with exactly the expected reason. Anything else (unapplied, not caught, caught by an unrelated error)
+# is a hard failure of the test run.
+check_mutation() {
+  local label=$1 expected=$2 r; shift 2
+  r=$(run_probe "$@")
+  case "$r" in
+    unapplied:*) echo "FAIL: mutation '$label' did not apply (${r#unapplied: }): update the mutation, it no longer matches buy_land_plot" >&2; exit 1 ;;
+    pass) echo "FAIL: removing $label was NOT caught" >&2; exit 1 ;;
+  esac
+  case "${r#fail: }" in
+    *"$expected"*) echo "PASS: removing $label is caught: ${r#fail: }" | cut -c1-220 ;;
+    *) echo "FAIL: removing $label failed for an unexpected reason: '${r#fail: }' (expected '$expected')" >&2; exit 1 ;;
+  esac
+}
+[ "$(run_probe)" = "pass" ] || { echo "FAIL: mutation probe does not pass on the real function: $(run_probe)" >&2; exit 1; }
+echo "PASS: the mutation probe passes on the reviewed buy_land_plot"
+
+IDEM=('where player_id = v_player.id and idempotency_key = p_idempotency_key;' 'where false;')
+check_mutation "the idempotency lookup" "FAIL: retry was not replayed (got OG409" "${IDEM[@]}"
+check_mutation "the already-sold checks" "FAIL: second buyer (with cash) refused — expected error OG409, but it succeeded" \
+  'if v_plot.owner_player_id is not null then' 'if false then' \
+  'where id = v_plot.id and owner_player_id is null;' 'where id = v_plot.id;'
+check_mutation "the balance checks" "FAIL: buyer without cash refused — expected OG402, got 23514" \
+  'if v_player.cash < v_price then' 'if false then' \
+  'where id = v_player.id and cash >= v_price' 'where id = v_player.id'
 echo "  (with the balance checks removed, players.cash CHECK (cash >= 0) still refuses the sale: no negative balance even then)"
 
+# The harness itself: a pattern that is not in the function, a pattern that is only partly present
+# (one of two pairs), and a real mutant caught for a different reason must each FAIL the run.
+( check_mutation "an unmatched pattern (self-test)" "anything" 'this text is not in buy_land_plot' 'x' ) >/dev/null 2>&1 \
+  && { echo "FAIL: harness self-test: an unmatched mutation pattern did not fail the run" >&2; exit 1; }
+( check_mutation "a half-matched mutation (self-test)" "anything" "${IDEM[@]}" 'nor is this text' 'y' ) >/dev/null 2>&1 \
+  && { echo "FAIL: harness self-test: a half-matched mutation did not fail the run" >&2; exit 1; }
+( check_mutation "the idempotency lookup (self-test, wrong reason)" "FAIL: buyer without cash refused" "${IDEM[@]}" ) >/dev/null 2>&1 \
+  && { echo "FAIL: harness self-test: a mutant caught for the wrong reason did not fail the run" >&2; exit 1; }
+[ "$(run_probe 'this text is not in buy_land_plot' 'x' | cut -d: -f1)" = "unapplied" ] \
+  || { echo "FAIL: harness self-test: unmatched pattern not reported as unapplied" >&2; exit 1; }
+echo "PASS: harness self-test: unmatched, half-matched and wrong-reason mutations each fail the run"
+[ "$(buy_md5)" = "$orig_md5" ] || { echo "FAIL: a mutation leaked into the real function" >&2; exit 1; }
+
 # Row locks need two connections, so these mutants are committed, probed, then the reviewed function is restored.
-lock_mutant() { psql -X -q -v ON_ERROR_STOP=1 -c "$(mutate "$1")"; }
+lock_mutant() { psql -X -q -v ON_ERROR_STOP=1 -c "$(mutate "$@")" >/dev/null 2>&1 || { echo "FAIL: lock mutation did not apply ($1): update it, it no longer matches buy_land_plot" >&2; exit 1; }; }
 restore() { psql -X -q -v ON_ERROR_STOP=1 -f "$ORIG_BUY"; [ "$(buy_md5)" = "$orig_md5" ] || { echo "FAIL: could not restore buy_land_plot" >&2; exit 1; }; }
 # Plot lock AND the conditional update removed: the overlap race must catch a double sale.
-lock_mutant "replace(replace(src, 'where plot_key = p_plot_key for update;', 'where plot_key = p_plot_key;'), 'where id = v_plot.id and owner_player_id is null;', 'where id = v_plot.id;')"
+lock_mutant 'where plot_key = p_plot_key for update;' 'where plot_key = p_plot_key;' 'where id = v_plot.id and owner_player_id is null;' 'where id = v_plot.id;'
 r=$(overlap "$(user 25)" test-09 "$(cat /proc/sys/kernel/random/uuid)" "$(user 26)" test-09 "$(cat /proc/sys/kernel/random/uuid)"); restore
-[ "${r%% *}" = "ok" ] && [ "$(txs_for test-09)" = "2" ] || { echo "FAIL: overlap test did not catch the missing plot lock (got '$r', txs $(txs_for test-09))" >&2; exit 1; }
+[ "$r" = "ok waited" ] && [ "$(txs_for test-09)" = "2" ] || { echo "FAIL: overlap test did not catch the missing plot lock (got '$r', txs $(txs_for test-09))" >&2; exit 1; }
 echo "PASS: removing the plot row lock (and the conditional update) is caught: the overlap test sees a double sale"
 # Plot lock removed but the conditional update kept: still safe (defence in depth).
-lock_mutant "replace(src, 'where plot_key = p_plot_key for update;', 'where plot_key = p_plot_key;')"
+lock_mutant 'where plot_key = p_plot_key for update;' 'where plot_key = p_plot_key;'
 r=$(overlap "$(user 27)" test-10 "$(cat /proc/sys/kernel/random/uuid)" "$(user 28)" test-10 "$(cat /proc/sys/kernel/random/uuid)"); restore
 [ "$r" = "OG409 waited" ] && [ "$(txs_for test-10)" = "1" ] || { echo "FAIL: without the plot lock the conditional update should still refuse (got '$r')" >&2; exit 1; }
 echo "PASS: with only the plot lock removed, the conditional update alone still refuses the second sale (OG409)"
-# Player lock removed: an overlapping retry is no longer answered from the first request.
-lock_mutant "replace(src, 'where user_id = v_uid for update;', 'where user_id = v_uid;')"
+# Player lock removed: an overlapping retry is no longer answered from the first request; it waits on the
+# plot lock instead and then sees its own purchase as a sale to someone (OG409).
+lock_mutant 'where user_id = v_uid for update;' 'where user_id = v_uid;'
 key=$(cat /proc/sys/kernel/random/uuid)
 r=$(overlap "$(user 29)" test-11 "$key" "$(user 29)" test-11 "$key"); restore
-[ "${r%% *}" != "replay" ] || { echo "FAIL: overlap retry test did not catch the missing player lock (got '$r')" >&2; exit 1; }
-echo "PASS: removing the player row lock is caught: an overlapping retry is no longer replayed (got ${r%% *})"
+[ "$r" = "OG409 waited" ] || { echo "FAIL: overlap retry test did not catch the missing player lock (got '$r', expected 'OG409 waited')" >&2; exit 1; }
+echo "PASS: removing the player row lock is caught: an overlapping retry is no longer replayed (got OG409)"
 rm -f "$ORIG_BUY"
 [ "$(buy_md5)" = "$orig_md5" ] || { echo "FAIL: buy_land_plot differs from the reviewed version after the mutation checks" >&2; exit 1; }
 echo "PASS: buy_land_plot restored to the reviewed version"
