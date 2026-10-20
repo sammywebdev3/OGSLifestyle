@@ -65,6 +65,12 @@ export class Roster {
     return { added, removed, events };
   }
 
+  /** Name of a player currently drawn, or null (not present, no profile, or not heard from yet). */
+  visibleName(id: string): string | null {
+    const e = this.entries.get(id);
+    return e?.shown && e.profile ? e.profile.name : null;
+  }
+
   /** Present players whose profile we still need. Marks them as requested. */
   takeProfileRequests(): string[] {
     const ids: string[] = [];
