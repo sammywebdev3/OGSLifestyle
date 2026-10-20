@@ -2,6 +2,8 @@ import * as Phaser from 'phaser';
 import type { AvatarSelection } from '@/types/player';
 import type { Direction, LocalPlayerState, RemotePlayerView } from '@/types/game';
 import { Smoother } from '@/features/multiplayer/motion';
+import { BubbleTracker, EMOTE_RANGE, INTERACT_RADIUS, clampBubble, nearestWithin, withinRange, type BubbleKind } from '@/features/multiplayer/bubbles';
+import { EMOTES } from '@/features/multiplayer/chat';
 import type { GameBus } from '../events';
 import { depthOf, gridToScreen, moveWithCollision, screenDirToGrid } from '../iso/isoMath';
 import { BUILDINGS, INTERACTABLES, LOCATION_ID, MAP_H, MAP_W, PROPS, SPAWN, buildBlockedSet, isBlockedFn, tileAt, type BuildingDef, type InteractableDef } from '../world/starterArea';
@@ -20,7 +22,13 @@ const SPEED = 3.4; // tiles per second
 const RADIUS = 0.28; // player collision radius in tiles
 
 /** Another player's character: drawn from multiplayer updates, never controlled locally. */
-interface RemoteAvatar { avatar: PlayerAvatar; motion: Smoother; facing: LocalPlayerState['facing']; moving: boolean }
+interface RemoteAvatar { name: string; avatar: PlayerAvatar; motion: Smoother; facing: LocalPlayerState['facing']; moving: boolean }
+
+/** Speech/emote bubble drawn above a character ("self" = the local player). */
+interface BubbleView { container: Phaser.GameObjects.Container; width: number; height: number }
+const SELF = 'self';
+/** Bubble bottom edge, in pixels above the character's feet (clears the name tag). */
+const BUBBLE_LIFT = 92;
 
 /** Kuto street corner: floor, buildings, props, a controllable player and interaction spots. */
 export class StarterAreaScene extends Phaser.Scene {
@@ -36,6 +44,10 @@ export class StarterAreaScene extends Phaser.Scene {
   private paused = false;
   private facing: LocalPlayerState['facing'] = 'right';
   private remotes = new Map<string, RemoteAvatar>();
+  private bubbles = new BubbleTracker();
+  private bubbleViews = new Map<string, BubbleView>();
+  private bubbleSerial = 0;
+  private nearbyId: string | null = null;
   private unsubscribe: (() => void)[] = [];
 
   constructor(opts: SceneOptions) {
@@ -82,10 +94,25 @@ export class StarterAreaScene extends Phaser.Scene {
         r.motion.setTarget(x, y); r.facing = facing; r.moving = moving;
       }),
       ui.on('remote:leave', ({ id }) => this.removeRemote(id)),
+      ui.on('bubble:chat', ({ id, text }) => this.showBubble(id, 'chat', text)),
+      ui.on('bubble:emote', ({ id, emote }) => {
+        // Emotes are for players nearby: remote ones from far away are not shown.
+        const r = this.remotes.get(id);
+        if (id !== SELF && (!r || !withinRange(r.motion, this.pos, EMOTE_RANGE))) return;
+        this.showBubble(id, 'emote', EMOTES[emote].icon);
+      }),
+      ui.on('input:typing', (typing) => {
+        const kb = this.input.keyboard;
+        if (!kb) return;
+        kb.enabled = !typing;
+        if (typing) { kb.disableGlobalCapture(); kb.resetKeys(); this.touch = { up: false, down: false, left: false, right: false }; }
+        else kb.enableGlobalCapture();
+      }),
     );
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.unsubscribe.forEach((u) => u());
       for (const id of [...this.remotes.keys()]) this.removeRemote(id);
+      this.hideBubble(SELF);
     });
     world.emit('ready', { locationId: LOCATION_ID });
   }
@@ -124,13 +151,70 @@ export class StarterAreaScene extends Phaser.Scene {
     this.removeRemote(r.id);
     const avatar = new PlayerAvatar(this, r.avatar, r.name, { remote: true });
     avatar.face(r.facing === 'left' ? -1 : 1);
-    this.remotes.set(r.id, { avatar, motion: new Smoother(r.x, r.y), facing: r.facing, moving: r.moving });
+    this.remotes.set(r.id, { name: r.name, avatar, motion: new Smoother(r.x, r.y), facing: r.facing, moving: r.moving });
     this.placeRemote(this.remotes.get(r.id)!);
   }
 
   private removeRemote(id: string) {
+    this.hideBubble(id); // a player who leaves takes their bubble with them
     this.remotes.get(id)?.avatar.destroy();
     this.remotes.delete(id);
+  }
+
+  /** Draw (or replace) the bubble above a character. Text is drawn by Phaser: never HTML. */
+  private showBubble(ownerId: string, kind: BubbleKind, content: string) {
+    if (ownerId !== SELF && !this.remotes.has(ownerId)) return;
+    const bubble = this.bubbles.show(ownerId, kind, content, this.time.now);
+    this.bubbleViews.get(ownerId)?.container.destroy(true);
+    const text = this.add.text(0, 0, bubble.lines.join('\n'), {
+      fontFamily: 'Trebuchet MS, sans-serif', fontSize: kind === 'emote' ? '22px' : '12px', color: '#111a3d', align: 'center', lineSpacing: 2,
+    }).setOrigin(0.5, 1);
+    const width = Math.ceil(text.width) + 16;
+    const height = Math.ceil(text.height) + 10;
+    const g = this.add.graphics();
+    g.fillStyle(hex('#fff6e5'), 0.97);
+    g.lineStyle(1.5, hex('#111a3d'), 0.3);
+    g.fillRoundedRect(-width / 2, -height - 6, width, height, 8);
+    g.strokeRoundedRect(-width / 2, -height - 6, width, height, 8);
+    g.fillTriangle(-6, -7, 6, -7, 0, 0); // tail pointing at the speaker
+    text.setPosition(0, -11);
+    // Newest bubble on top when characters overlap; always above the world.
+    const container = this.add.container(0, 0, [g, text]).setDepth(100_000 + ++this.bubbleSerial);
+    this.bubbleViews.set(ownerId, { container, width, height: height + 6 });
+    this.placeBubble(ownerId);
+  }
+
+  private hideBubble(ownerId: string) {
+    this.bubbles.remove(ownerId);
+    this.bubbleViews.get(ownerId)?.container.destroy(true);
+    this.bubbleViews.delete(ownerId);
+  }
+
+  /** Follow the speaker, but stay inside the camera view. */
+  private placeBubble(ownerId: string) {
+    const view = this.bubbleViews.get(ownerId);
+    const anchor = ownerId === SELF ? this.player.container : this.remotes.get(ownerId)?.avatar.container;
+    if (!view || !anchor) return;
+    const cam = this.cameras.main.worldView;
+    const p = clampBubble(anchor.x, anchor.y - BUBBLE_LIFT, view.width, view.height, { x: cam.x, y: cam.y, width: cam.width, height: cam.height });
+    view.container.setPosition(p.x, p.y);
+  }
+
+  private updateBubbles() {
+    for (const id of this.bubbles.expire(this.time.now)) {
+      this.bubbleViews.get(id)?.container.destroy(true);
+      this.bubbleViews.delete(id);
+    }
+    for (const id of this.bubbleViews.keys()) this.placeBubble(id);
+  }
+
+  /** Tell the UI when another player comes within reach (or nobody is). Positions are cosmetic only. */
+  private updateProximity() {
+    const others = [...this.remotes].map(([id, r]) => ({ id, name: r.name, x: r.motion.x, y: r.motion.y }));
+    const near = nearestWithin(this.pos, others, INTERACT_RADIUS);
+    if ((near?.id ?? null) === this.nearbyId) return;
+    this.nearbyId = near?.id ?? null;
+    this.opts.bus.world.emit('proximity', near ? { id: near.id, name: near.name } : null);
   }
 
   private placeRemote(r: RemoteAvatar) {
@@ -172,6 +256,8 @@ export class StarterAreaScene extends Phaser.Scene {
       r.avatar.animate(dt, r.moving, r.facing === 'left' ? -1 : 1);
       if (!r.moving) r.avatar.face(r.facing === 'left' ? -1 : 1);
     }
+    this.updateBubbles();
+    this.updateProximity();
     this.sortBuildings();
     this.checkInteractions();
   }

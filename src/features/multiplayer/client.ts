@@ -19,6 +19,7 @@ import type { LocalPlayerState } from '@/types/game';
 import { SendPolicy } from './motion.ts';
 import { STATE_EVENT, encodeState, newSessionId, parseProfiles, parseState, playerTopic, presentPlayerIds, roomTopic, type Bounds } from './protocol.ts';
 import { Roster, type RosterEvent } from './roster.ts';
+import { CHAT_EVENT, EMOTE_EVENT, InboundGate, RateLimiter, SEND_LIMITS, encodeChat, encodeEmote, isEmoteId, parseChat, parseEmote, sanitizeChatText, type EmoteId } from './chat.ts';
 
 export type MultiplayerStatus = 'connecting' | 'online' | 'reconnecting' | 'unavailable';
 
@@ -26,7 +27,16 @@ export interface MultiplayerCallbacks {
   onStatus: (status: MultiplayerStatus) => void;
   /** Join / move / leave events for the scene, plus how many players are visible. */
   onEvents: (events: RosterEvent[], visible: number) => void;
+  /** A validated chat message from a visible player (name from the database, never from the sender). */
+  onChat?: (msg: { playerId: string; name: string; text: string; session: string; n: number }) => void;
+  /** A validated emote from a visible player. */
+  onEmote?: (msg: { playerId: string; emote: EmoteId }) => void;
 }
+
+/** Outcome of sendChat / sendEmote, for the UI. `n` and `session` identify a sent chat line. */
+export type SendResult =
+  | { ok: true; text: string; session: string; n: number }
+  | { ok: false; reason: 'offline' | 'invalid' | 'rate-limited' };
 
 type ChannelStatus = 'SUBSCRIBED' | 'TIMED_OUT' | 'CLOSED' | 'CHANNEL_ERROR';
 
@@ -44,6 +54,10 @@ export class MultiplayerClient {
   private readonly policy = new SendPolicy();
   private readonly session = newSessionId();
   private seq = 0;
+  private interactionSeq = 0;
+  private readonly chatLimit = new RateLimiter(SEND_LIMITS.chat.capacity, SEND_LIMITS.chat.refillMs);
+  private readonly emoteLimit = new RateLimiter(SEND_LIMITS.emote.capacity, SEND_LIMITS.emote.refillMs);
+  private readonly inbound = new InboundGate();
   private roomChannel: RealtimeChannel | null = null;
   private ownChannel: RealtimeChannel | null = null;
   private readonly remoteChannels = new Map<string, RealtimeChannel>();
@@ -97,6 +111,27 @@ export class MultiplayerClient {
       .catch(() => undefined);
   }
 
+  /** Send a chat message to the room (on our own topic). Cleans and length-checks it first. */
+  sendChat(raw: string): SendResult {
+    const text = sanitizeChatText(raw);
+    if (text === null) return { ok: false, reason: 'invalid' };
+    if (this.stopped || !this.ready.own || !this.ownChannel) return { ok: false, reason: 'offline' };
+    if (!this.chatLimit.tryTake(Date.now())) return { ok: false, reason: 'rate-limited' };
+    const n = ++this.interactionSeq;
+    void this.ownChannel.send({ type: 'broadcast', event: CHAT_EVENT, payload: encodeChat(this.session, n, text) }).catch(() => undefined);
+    return { ok: true, text, session: this.session, n };
+  }
+
+  /** Send an emote (wave, greet, laugh, heart). Receivers show it only near us. */
+  sendEmote(emote: string): SendResult {
+    if (!isEmoteId(emote)) return { ok: false, reason: 'invalid' };
+    if (this.stopped || !this.ready.own || !this.ownChannel) return { ok: false, reason: 'offline' };
+    if (!this.emoteLimit.tryTake(Date.now())) return { ok: false, reason: 'rate-limited' };
+    const n = ++this.interactionSeq;
+    void this.ownChannel.send({ type: 'broadcast', event: EMOTE_EVENT, payload: encodeEmote(this.session, n, emote) }).catch(() => undefined);
+    return { ok: true, text: emote, session: this.session, n };
+  }
+
   stop(): void {
     if (this.stopped) return;
     this.stopped = true;
@@ -130,6 +165,7 @@ export class MultiplayerClient {
       const ch = this.remoteChannels.get(id);
       if (ch) void this.db.removeChannel(ch);
       this.remoteChannels.delete(id);
+      this.inbound.forget(id);
     }
     for (const id of added) this.listenTo(id);
     if (added.length > 0) {
@@ -146,6 +182,19 @@ export class MultiplayerClient {
         // The topic, not the payload, says who sent this: only `id` may send on it.
         const state = parseState(msg.payload, this.bounds);
         if (state) this.emit(this.roster.receiveState(id, state, Date.now()));
+      })
+      .on('broadcast', { event: CHAT_EVENT }, (msg) => {
+        // Same rule as movement: only `id` can send on this topic. The name shown
+        // comes from the database profile; a player not yet drawn is ignored.
+        const chat = parseChat(msg.payload);
+        const name = this.roster.visibleName(id);
+        if (!chat || !name || !this.inbound.accept('chat', id, chat.session, chat.n, Date.now())) return;
+        safely(() => this.cb.onChat?.({ playerId: id, name, text: chat.text, session: chat.session, n: chat.n }));
+      })
+      .on('broadcast', { event: EMOTE_EVENT }, (msg) => {
+        const emote = parseEmote(msg.payload);
+        if (!emote || !this.roster.visibleName(id) || !this.inbound.accept('emote', id, emote.session, emote.n, Date.now())) return;
+        safely(() => this.cb.onEmote?.({ playerId: id, emote: emote.emote }));
       })
       .subscribe();
     this.remoteChannels.set(id, ch);

@@ -26,7 +26,7 @@ class FakeChannel {
   readonly private: boolean;
   readonly key: string | undefined;
   joined = false;
-  broadcastHandlers: Handler[] = [];
+  broadcastHandlers = new Map<string, Handler[]>();
   presenceHandlers: (() => void)[] = [];
   private readonly hub: FakeHub;
   private readonly owner: string | null;
@@ -38,7 +38,7 @@ class FakeChannel {
   }
 
   on(type: string, filter: { event: string }, cb: Handler | (() => void)) {
-    if (type === 'broadcast' && filter.event === 'state') this.broadcastHandlers.push(cb as Handler);
+    if (type === 'broadcast') this.broadcastHandlers.set(filter.event, [...(this.broadcastHandlers.get(filter.event) ?? []), cb as Handler]);
     if (type === 'presence' && filter.event === 'sync') this.presenceHandlers.push(cb as () => void);
     return this;
   }
@@ -63,7 +63,7 @@ class FakeChannel {
 
   async send(msg: { type: string; event: string; payload: unknown }) {
     if (!this.joined || !this.hub.canBroadcast(this.owner, this.topic)) return 'error';
-    this.hub.broadcast(this, msg.payload);
+    this.hub.broadcast(this, msg.event, msg.payload);
     return 'ok';
   }
 
@@ -97,8 +97,14 @@ class FakeHub {
   }
   presenceState(topic: string) { return Object.fromEntries(this.presence.get(topic) ?? []); }
   syncPresence(topic: string) { for (const ch of this.channels) if (ch.topic === topic) ch.presenceHandlers.forEach((h) => h()); }
-  broadcast(from: FakeChannel, payload: unknown) {
-    for (const ch of this.channels) if (ch !== from && ch.topic === from.topic) ch.broadcastHandlers.forEach((h) => h({ payload }));
+  broadcast(from: FakeChannel | null, event: string, payload: unknown, topic = from?.topic) {
+    for (const ch of this.channels) if (ch !== from && ch.topic === topic) (ch.broadcastHandlers.get(event) ?? []).forEach((h) => h({ payload }));
+  }
+  /** A modified client sending raw payloads as `owner`: the same server rule still applies. */
+  rawSend(owner: string, topic: string, event: string, payload: unknown): 'ok' | 'error' {
+    if (!this.canBroadcast(owner, topic)) return 'error';
+    this.broadcast(null, event, payload, topic);
+    return 'ok';
   }
   db(owner: string | null) {
     return {
@@ -114,16 +120,21 @@ class FakeHub {
   }
 }
 
-interface Probe { client: MultiplayerClient; events: RosterEvent[]; statuses: MultiplayerStatus[]; visible: number; closedChannels: number }
+interface Probe {
+  client: MultiplayerClient; events: RosterEvent[]; statuses: MultiplayerStatus[]; visible: number; closedChannels: number;
+  chats: { playerId: string; name: string; text: string }[]; emotes: { playerId: string; emote: string }[];
+}
 
 function connect(hub: FakeHub, playerId: string | null, asPlayer = playerId ?? A): Probe {
-  const probe = { events: [] as RosterEvent[], statuses: [] as MultiplayerStatus[], visible: 0, closedChannels: 0 } as Probe;
+  const probe = { events: [] as RosterEvent[], statuses: [] as MultiplayerStatus[], visible: 0, closedChannels: 0, chats: [], emotes: [] } as unknown as Probe;
   const db = hub.db(playerId);
   const remove = db.removeChannel;
   db.removeChannel = async (ch: FakeChannel) => { probe.closedChannels++; return remove(ch); };
   probe.client = new MultiplayerClient(db as any, asPlayer, ROOM, BOUNDS, {
     onStatus: (s) => probe.statuses.push(s),
     onEvents: (events, visible) => { probe.events.push(...events); probe.visible = visible; },
+    onChat: ({ playerId, name, text }) => probe.chats.push({ playerId, name, text }),
+    onEmote: ({ playerId, emote }) => probe.emotes.push({ playerId, emote }),
   });
   return probe;
 }
@@ -247,4 +258,124 @@ test('stop() hides everyone, leaves presence and closes every channel', async ()
   assert.ok(a.events.some((e) => e.type === 'leave' && e.id === B));
   assert.equal([...hub.channels].filter((c) => c.topic.includes(A) || (c.key === A)).length, 0, 'A has no open channels');
   assert.equal(Object.keys(hub.presenceState('mp:kuto-street')).includes(A), false, 'A left presence');
+});
+
+// ------------------------------------------------------------------ Phase 3.2: chat and emotes
+
+const SESSION = 'tabRAWRAWRAWRAW1';
+const topicOf = (id: string) => `mp:${ROOM}:${id}`;
+
+/** Both players connected and visible to each other. */
+async function chatting(hub: FakeHub) {
+  const { a, b } = await startBoth(hub);
+  a.client.sendLocal({ x: 4.5, y: 6.4, facing: 'right', moving: false });
+  b.client.sendLocal({ x: 5.5, y: 6.4, facing: 'left', moving: false });
+  await tick();
+  return { a, b };
+}
+
+test('two players chat: text arrives with the sender\'s name from the database', async () => {
+  const hub = setup();
+  const { a, b } = await chatting(hub);
+  const sent = a.client.sendChat('  Báwo ni?  ');
+  assert.deepEqual(sent.ok && sent.text, 'Báwo ni?');
+  await tick();
+  assert.deepEqual(b.chats, [{ playerId: A, name: 'Adé Bello', text: 'Báwo ni?' }]);
+  assert.deepEqual(a.chats, [], 'no echo of our own broadcast (the UI adds our own line locally)');
+});
+
+test('chat text is cleaned and kept literal: HTML stays text, bidi tricks are removed', async () => {
+  const hub = setup();
+  const { a, b } = await chatting(hub);
+  a.client.sendChat('<b>hi</b>' + String.fromCodePoint(0x202e) + '!');
+  await tick();
+  assert.equal(b.chats[0]?.text, '<b>hi</b>!');
+});
+
+test('a sender cannot choose the displayed name: extra payload fields are ignored', async () => {
+  const hub = setup();
+  const { b } = await chatting(hub);
+  assert.equal(hub.rawSend(A, topicOf(A), 'chat', { v: 1, s: SESSION, n: 1, t: 'hello', name: 'Bayo Ade', playerId: B }), 'ok');
+  await tick();
+  assert.deepEqual(b.chats, [{ playerId: A, name: 'Adé Bello', text: 'hello' }]);
+});
+
+test('impersonation: chatting or emoting as another player is refused by the topic rule', async () => {
+  const hub = setup();
+  const { a } = await chatting(hub);
+  assert.equal(hub.rawSend(A, topicOf(B), 'chat', { v: 1, s: SESSION, n: 1, t: 'I am Bayo' }), 'error');
+  assert.equal(hub.rawSend(A, topicOf(B), 'emote', { v: 1, s: SESSION, n: 1, e: 'heart' }), 'error');
+  assert.equal(hub.rawSend(A, `mp:${ROOM}`, 'chat', { v: 1, s: SESSION, n: 1, t: 'to the room topic' }), 'error');
+  const mallory = connect(hub, A, B); clients.push(mallory); // signed in as A, client claims B
+  await mallory.client.start(); await tick();
+  mallory.client.sendChat('fake Bayo');
+  await tick();
+  assert.equal(a.chats.length, 0, 'nothing appeared as if from B');
+});
+
+test('sending is limited: invalid text, offline, and more than 5 messages in a burst', async () => {
+  const hub = setup();
+  const lone = connect(hub, A); clients.push(lone);
+  assert.deepEqual(lone.client.sendChat('hi'), { ok: false, reason: 'offline' }, 'before connecting');
+  await lone.client.start(); await tick();
+  assert.deepEqual(lone.client.sendChat('   '), { ok: false, reason: 'invalid' });
+  assert.deepEqual(lone.client.sendChat('x'.repeat(201)), { ok: false, reason: 'invalid' });
+  const results = Array.from({ length: 7 }, (_, i) => lone.client.sendChat(`m${i}`).ok);
+  assert.deepEqual(results, [true, true, true, true, true, false, false]);
+  assert.deepEqual(lone.client.sendEmote('dance'), { ok: false, reason: 'invalid' });
+});
+
+test('receiving is limited too: a modified client flooding chat shows at most 8 messages', async () => {
+  const hub = setup();
+  const { b } = await chatting(hub);
+  for (let n = 1; n <= 30; n++) hub.rawSend(A, topicOf(A), 'chat', { v: 1, s: SESSION, n, t: `spam ${n}` });
+  await tick();
+  assert.equal(b.chats.length, 8);
+});
+
+test('chat and emotes from a player who is not (yet) drawn are ignored', async () => {
+  const hub = setup();
+  const { a, b } = await startBoth(hub); // nobody has sent a position yet: nobody is drawn
+  a.client.sendChat('too early');
+  a.client.sendEmote('wave');
+  await tick();
+  assert.equal(b.chats.length + b.emotes.length, 0);
+});
+
+test('emotes: valid ones arrive; unknown emotes and malformed payloads are dropped', async () => {
+  const hub = setup();
+  const { a, b } = await chatting(hub);
+  assert.equal(a.client.sendEmote('wave').ok, true);
+  hub.rawSend(A, topicOf(A), 'emote', { v: 1, s: SESSION, n: 50, e: 'nuke' });
+  hub.rawSend(A, topicOf(A), 'emote', { v: 1, s: SESSION, n: 51, e: '__proto__' });
+  hub.rawSend(A, topicOf(A), 'chat', '<script>');
+  await tick();
+  assert.deepEqual(b.emotes, [{ playerId: A, emote: 'wave' }]);
+  assert.equal(b.chats.length, 0);
+});
+
+test('reconnect: after leaving and rejoining, chat works again without duplicates', async () => {
+  const hub = setup();
+  const { a, b } = await chatting(hub);
+  a.client.sendChat('before');
+  await tick();
+  a.client.stop();
+  await tick();
+  const a2 = connect(hub, A); clients.push(a2);
+  await a2.client.start(); await tick();
+  a2.client.sendLocal({ x: 4, y: 6, facing: 'right', moving: false });
+  await tick();
+  a2.client.sendChat('after');
+  await tick();
+  assert.deepEqual(b.chats.map((c) => c.text), ['before', 'after']);
+});
+
+test('chat and emotes never touch the database except the profile lookup', async () => {
+  const hub = setup();
+  const { a } = await chatting(hub);
+  const callsBefore = hub.rpcCalls;
+  for (let i = 0; i < 3; i++) a.client.sendChat(`hi ${i}`);
+  a.client.sendEmote('heart');
+  await tick();
+  assert.equal(hub.rpcCalls, callsBefore, 'no RPC calls for chat or emotes');
 });

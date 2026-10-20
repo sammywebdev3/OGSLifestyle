@@ -1,5 +1,6 @@
 /** Types shared between the Phaser world and the React UI. */
 import type { AvatarSelection, LocationId } from './player';
+import type { EmoteId } from '@/features/multiplayer/chat';
 
 export type Direction = 'up' | 'down' | 'left' | 'right';
 
@@ -19,6 +20,8 @@ export interface WorldToUiEvents {
   'interaction:triggered': InteractionTarget;
   /** The local player's position, every frame (the multiplayer client decides what to send). */
   'player:state': LocalPlayerState;
+  /** Another player is within reach (for the emote prompt), or nobody is. */
+  proximity: { id: string; name: string } | null;
 }
 
 /** Where the local player is, in grid tiles. */
@@ -36,4 +39,10 @@ export interface UiToWorldEvents {
   'remote:join': RemotePlayerView;
   'remote:move': LocalPlayerState & { id: string };
   'remote:leave': { id: string };
+  /** Show a speech bubble above a character: a player id, or "self" for the local player. */
+  'bubble:chat': { id: string; text: string };
+  /** Show an emote above a character (the scene skips remote emotes from far away). */
+  'bubble:emote': { id: string; emote: EmoteId };
+  /** The chat box has focus: stop reading WASD/E/Space/Enter as game keys. */
+  'input:typing': boolean;
 }

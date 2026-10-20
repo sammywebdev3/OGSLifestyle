@@ -210,6 +210,18 @@ Signed-in players in the same area see each other move. The code lives in `src/f
 - **Guests** always play solo.
 - **Setup and the two-account test plan:** [`docs/phase-3.1-multiplayer-test-plan.md`](docs/phase-3.1-multiplayer-test-plan.md).
 
+## Multiplayer interaction (Phase 3.2)
+
+Players can chat, see speech bubbles, and send emotes (👋 🤝 😂 ❤️) to players nearby.
+
+- **Transport:** chat and emotes are broadcast events on the sender's own player topic. The existing Phase 3.1 policies
+  already make sure only the owner can send there, so there is **no new migration**.
+- **Storage:** nothing is stored; chat history lives in memory (the last 50 lines per tab).
+- **Limits:** 200 characters per message, plus rate limits when sending and when receiving.
+- **Rendering:** messages are always rendered as plain text, never HTML.
+- **Code:** `src/features/multiplayer/chat.ts` and `bubbles.ts`, `src/components/game/ChatPanel.tsx` and `EmoteBar.tsx`.
+- **Test plan:** [`docs/phase-3.2-interaction-test-plan.md`](docs/phase-3.2-interaction-test-plan.md).
+
 ## Deploying to Vercel
 
 1. Import the GitHub repo in Vercel. `vercel.json` sets the framework to Next.js. This matters for a Vercel project

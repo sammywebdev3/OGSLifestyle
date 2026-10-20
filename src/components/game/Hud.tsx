@@ -8,8 +8,9 @@ import { LOCATIONS, SKIN_TONES, OUTFIT_COLORS } from '@/config/game';
 import { CashBadge } from '@/components/player/CashBadge';
 
 /** Top HUD: who you are, your cash, where you are, and quick buttons. */
-export function Hud({ player, mode, locationId, multiplayer, onInventory }: {
+export function Hud({ player, mode, locationId, multiplayer, onInventory, onChat, chatUnread }: {
   player: Player; mode: PlayerMode; locationId: LocationId; multiplayer: MultiplayerState; onInventory: () => void;
+  onChat: () => void; chatUnread: number;
 }) {
   const loc = LOCATIONS[locationId];
   return (
@@ -26,6 +27,10 @@ export function Hud({ player, mode, locationId, multiplayer, onInventory }: {
       </div>
       <div className="pointer-events-auto flex items-center gap-2">
         <CashBadge cash={player.cash} mode={mode} className="shadow-card" />
+        <button type="button" onClick={onChat} className="relative grid h-10 w-10 place-items-center rounded-full bg-adire-900/80 text-lg shadow-card backdrop-blur hover:bg-adire-700" aria-label={chatUnread > 0 ? `Open chat (${chatUnread} new)` : 'Open chat'} title="Chat">
+          💬
+          {chatUnread > 0 && <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-laterite-500 px-1 text-[10px] font-black text-white">{chatUnread > 9 ? '9+' : chatUnread}</span>}
+        </button>
         <button type="button" onClick={onInventory} className="grid h-10 w-10 place-items-center rounded-full bg-adire-900/80 text-lg shadow-card backdrop-blur hover:bg-adire-700" aria-label="Open inventory" title="Inventory (I)">🎒</button>
         <Link href="/apartment" className="grid h-10 w-10 place-items-center rounded-full bg-adire-900/80 text-lg shadow-card backdrop-blur hover:bg-adire-700" aria-label="Back to your apartment" title="Your apartment">🏠</Link>
       </div>
