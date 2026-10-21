@@ -13,6 +13,9 @@
 --
 -- Every row should say ok = true. The first row ("00 ALL CHECKS") is true only when all of
 -- them are. Rows starting with "i" are information, not checks:
+--   "i2" lists trigger/event-trigger functions in public that anon/authenticated hold EXECUTE on.
+--   They cannot be called directly, so check 21 does not count them; on Supabase projects with
+--   automatic RLS this shows e.g. "rls_auto_enable (event_trigger, event trigger: ensure_rls)".
 --   "i1 fresh install" is "yes" right after the migration (no plot owned, empty ledger) and
 --   "no" once players have bought land. Both are fine; check it says "yes" right after applying.
 -- Fingerprints (md5) were taken from the reviewed migration applied to local supabase/postgres
@@ -170,12 +173,26 @@ checks(check_name, ok, detail) as (
          and (select count(*) from pg_trigger where not tgisinternal and tgrelid in (select oid from pg_class where relnamespace = 'public'::regnamespace and relname in ('players', 'inventories', 'inventory_items'))) = 0,
          'no write privileges and no triggers on players/inventories/inventory_items'
   union all
+  -- "Callable" = what a client could invoke as an RPC. Functions returning trigger or event_trigger
+  -- are excluded: PostgreSQL refuses to call them directly (0A000), whatever the grants. Our own
+  -- trigger functions are still required to have no client EXECUTE (check 11), and any trigger
+  -- function that client roles hold EXECUTE on is listed in i2, so nothing is hidden.
   select '21 callable functions: exactly the 6 reviewed ones; anon none',
          coalesce(array_agg(p.proname::text order by p.proname) filter (where has_function_privilege('authenticated', p.oid, 'EXECUTE')), '{}')
            = array['buy_land_plot', 'create_character', 'get_land_plots', 'get_my_land', 'get_player_profiles', 'mp_my_player_id']
          and count(*) filter (where has_function_privilege('anon', p.oid, 'EXECUTE')) = 0,
          coalesce(array_to_string(array_agg(p.proname::text order by p.proname) filter (where has_function_privilege('authenticated', p.oid, 'EXECUTE')), ', '), 'none')
     from pg_proc p where p.pronamespace = 'public'::regnamespace
+     and p.prorettype not in ('trigger'::regtype, 'event_trigger'::regtype)
+  union all
+  select 'i2 trigger functions in public that client roles may EXECUTE (cannot be called directly)', true,
+         coalesce(string_agg(p.proname || ' (' || format_type(p.prorettype, null)
+                             || case when exists (select 1 from pg_event_trigger e where e.evtfoid = p.oid) then ', event trigger: '
+                                     || (select string_agg(e.evtname || case when e.evtenabled = 'D' then ' disabled' else '' end, ', ') from pg_event_trigger e where e.evtfoid = p.oid)
+                                     else '' end || ')', '; ' order by p.proname), 'none')
+    from pg_proc p where p.pronamespace = 'public'::regnamespace
+     and p.prorettype in ('trigger'::regtype, 'event_trigger'::regtype)
+     and (has_function_privilege('anon', p.oid, 'EXECUTE') or has_function_privilege('authenticated', p.oid, 'EXECUTE'))
   union all
   select 'i1 fresh install (no plot owned, empty ledger)', true,
          case when (select count(*) from plots where owner_player_id is not null) = 0 and (select count(*) from public.ledger_entries) = 0

@@ -154,6 +154,8 @@ alter policy "players: read own" on public.players using (true)
 grant update on public.players to authenticated
 create trigger t before update on public.players for each row execute function suppress_redundant_updates_trigger()
 create function public.leak_players() returns setof public.players language sql security definer set search_path = '' as $$ select * from public.players $$
+create function public.anon_only() returns int language sql as $$ select 1 $$; revoke all on function public.anon_only() from public, authenticated; grant execute on function public.anon_only() to anon
+create function public.rls_auto_enable_x() returns setof public.players language sql security definer set search_path = '' as $$ select * from public.players $$
 BAD
 echo "PASS: land check fails on $n known-bad variants (RLS, policies, grants, sequence, definer, search_path, triggers, columns, constraints, prices, footprints, plot count, overloads, function bodies, Phase 1 policies/grants/triggers, extra callable function)"
 # Whitespace-only re-indentation of a function body (what the SQL Editor may do) is accepted and reported.
@@ -161,6 +163,41 @@ out=$(land_rows -c "begin" -c "do \$d\$ declare src text; begin select prosrc in
 echo "$out" | grep -q '^00 ALL CHECKS|t|' && echo "$out" | grep -q '^12 buy_land_plot body.*|t|match=same code' \
   || { echo "$out"; echo "FAIL: land check rejects a whitespace-only re-indentation of buy_land_plot" >&2; exit 1; }
 echo "PASS: land check accepts a re-indented (whitespace-only) buy_land_plot body and reports it"
+# Production has a Supabase helper outside this repo: event trigger ensure_rls -> public.rls_auto_enable()
+# (SECURITY DEFINER, EXECUTE for anon/authenticated/service_role). Recreate that shape here: the check must
+# pass, list it in i2, and still fail on every genuinely callable extra function.
+ENSURE_RLS="create function public.rls_auto_enable() returns event_trigger language plpgsql security definer set search_path = pg_catalog as \$f\$ declare r record; begin for r in select * from pg_event_trigger_ddl_commands() where object_type = 'table' and schema_name = 'public' loop execute format('alter table %s enable row level security', r.object_identity); end loop; end \$f\$; create event trigger ensure_rls on ddl_command_end when tag in ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO') execute function public.rls_auto_enable(); grant execute on function public.rls_auto_enable() to anon, authenticated, service_role"
+out=$(land_rows -c "begin" -c "$ENSURE_RLS" -f "$LAND_VERIFY" -c "rollback")
+echo "$out" | grep -q '^00 ALL CHECKS|t|' && echo "$out" | grep -q '^21 callable functions.*|t|buy_land_plot, create_character, get_land_plots, get_my_land, get_player_profiles, mp_my_player_id$' \
+  && echo "$out" | grep -q '^i2 trigger functions.*|t|rls_auto_enable (event_trigger, event trigger: ensure_rls)$' \
+  || { echo "$out"; echo "FAIL: land check does not accept the production ensure_rls / rls_auto_enable helper, or does not list it in i2" >&2; exit 1; }
+echo "PASS: with the production-like ensure_rls / rls_auto_enable() helper the check passes, and i2 lists it"
+# Why excluding trigger functions from check 21 is sound: even with EXECUTE granted, nobody can call one.
+for role in anon authenticated; do
+  r=$(psql -X -At -v VERBOSITY=verbose -c "begin" -c "$ENSURE_RLS" -c "set role $role" -c "select public.rls_auto_enable()" -c "rollback" 2>&1 | grep -oE 'ERROR: +[0-9A-Z]{5}' | grep -oE '[0-9A-Z]{5}$' || true)
+  [ "$r" = "0A000" ] || { echo "FAIL: $role calling rls_auto_enable() directly should fail with 0A000, got '$r'" >&2; exit 1; }
+done
+echo "PASS: anon and authenticated cannot call rls_auto_enable() directly (0A000: trigger functions can only be called as triggers)"
+# With the helper present, genuinely callable extras and changed land grants must still fail.
+n=0
+while IFS= read -r bad; do
+  [ -n "$bad" ] || continue
+  r=$(land_ok -c "begin" -c "$ENSURE_RLS" -c "$bad" -f "$LAND_VERIFY" -c "rollback")
+  [ "$r" = "f" ] || { echo "FAIL: with ensure_rls present, land check did not catch: $bad" >&2; exit 1; }
+  n=$((n+1))
+done <<'BAD'
+create function public.leak_players() returns setof public.players language sql security definer set search_path = '' as $$ select * from public.players $$
+create function public.anon_only() returns int language sql as $$ select 1 $$; revoke all on function public.anon_only() from public, authenticated; grant execute on function public.anon_only() to anon
+grant execute on function public.buy_land_plot(text, uuid) to anon
+revoke execute on function public.get_my_land() from authenticated
+grant execute on function public.economy_append_only() to authenticated
+grant execute on function public.ledger_check_balanced() to anon
+BAD
+echo "PASS: with the helper present the check still fails on $n changes (extra callable function, anon-only function, land RPC grants, client EXECUTE on our trigger functions)"
+# A trigger function with client EXECUTE is not counted as callable, but is never hidden: i2 lists it.
+out=$(land_rows -c "begin" -c "create function public.some_trigger_fn() returns trigger language plpgsql as \$f\$ begin return null; end \$f\$" -f "$LAND_VERIFY" -c "rollback")
+echo "$out" | grep -q '^i2 trigger functions.*|t|some_trigger_fn (trigger)$' || { echo "$out"; echo "FAIL: i2 does not list an extra trigger function with client EXECUTE" >&2; exit 1; }
+echo "PASS: an extra trigger function with client EXECUTE is reported in i2"
 
 echo "▶ running SQL tests"
 for f in "$ROOT"/supabase/tests/*.test.sql; do
