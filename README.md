@@ -45,6 +45,7 @@ You don't need any credentials to run it.
 | `npm run typecheck` | TypeScript check (`tsc --noEmit`) |
 | `npm test` | Unit tests with Node's built-in runner (validation, isometric maths, env, auth events, same-origin checks) |
 | `npm run test:db` | Migration and RLS tests in a disposable local Supabase Postgres (Docker) |
+| `npm run test:api` | HTTP integration tests of the land API routes: a production build against disposable local Postgres, Auth and PostgREST (Docker) |
 
 Node 20.9 or newer is required. `npm test` uses Node's `--experimental-strip-types` flag, which needs **Node 22.6 or newer**.
 
@@ -243,6 +244,18 @@ Each plot has one owner, kept in the database, so ownership survives reloads.
   the 🗺️ panel says "Land is not open on this server yet".
 - **Not in this phase:** trading between players, building, companies, and new plot releases.
 - **Plan, rollback and manual tests:** [`docs/phase-3.3a-land-test-plan.md`](docs/phase-3.3a-land-test-plan.md).
+- **Account deletion:**
+  - The app has no account-deletion flow.
+  - Deleting the account of a player who owns land is refused by the database; nothing is removed.
+  - Run `supabase/verify/account_deletion_precheck.sql` (read-only) before deleting any user. See the test plan's
+    "Account deletion" section.
+- **API integration tests:** `npm run test:api`. It needs Docker and psql, and builds the app against a throwaway
+  local stack with a per-run JWT secret. It covers:
+  - unauthenticated and no-character requests;
+  - bad JSON, malformed input, injected fields, oversized bodies, and cross-origin and non-JSON requests;
+  - a purchase, insufficient funds, an already-sold plot, retries (including 5 parallel requests), and
+    cross-player isolation;
+  - database errors (500/503) and deletion through the Auth admin API.
 
 ## Deploying to Vercel
 

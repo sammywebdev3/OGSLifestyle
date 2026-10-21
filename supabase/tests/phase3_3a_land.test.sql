@@ -238,4 +238,52 @@ select tests.ok((select count(*) = 2 from public.players), 'still exactly two pl
 select tests.ok((select count(*) = 6 and sum(quantity) = 10 from public.inventory_items), 'inventory items unchanged (6 rows, 10 items)');
 select tests.ok((select count(*) = 2 from public.inventories), 'inventories unchanged');
 
+\echo '== 43. Account deletion (as postgres, like Supabase Auth deleting a user; every probe is rolled back)'
+-- A owns land: deleting A's auth user must be refused, and nothing may be removed.
+do $$
+begin
+  begin
+    delete from auth.users where id = '00000000-0000-4000-a000-00000000000a';
+    raise exception 'FAIL: deleting a land owner''s account succeeded';
+  exception when foreign_key_violation then
+    if sqlerrm not like '%land_plots_owner_player_id_fkey%' and sqlerrm not like '%on table "land_plots"%'
+       and sqlerrm not like '%economy_transactions%' and sqlerrm not like '%ledger_entries%' and sqlerrm not like '%economic_requests%' then
+      raise exception 'FAIL: unexpected foreign key error: %', sqlerrm;
+    end if;
+    raise notice 'PASS: deleting a land owner''s account is refused (23503: %)', sqlerrm;
+  end;
+end $$;
+select tests.ok((select count(*) = 1 from auth.users where id = '00000000-0000-4000-a000-00000000000a')
+                and (select count(*) = 1 from public.players where user_id = '00000000-0000-4000-a000-00000000000a'),
+                'the land owner''s user and player rows are still there');
+select tests.ok((select count(*) = 1 from public.land_plots l join public.players p on p.id = l.owner_player_id
+                 where p.user_id = '00000000-0000-4000-a000-00000000000a' and l.plot_key = 'kuto-07'),
+                'the land owner still owns their plot (nothing confiscated or transferred)');
+select tests.ok((select count(*) = 4 from public.ledger_entries), 'no ledger line was deleted');
+-- The same is true for a direct delete of the player row (no bypass through public.players).
+select tests.expect_error($$delete from public.players where user_id = '00000000-0000-4000-a000-00000000000b'$$, '23503',
+                'deleting a land owner''s player row directly is refused too');
+
+-- E has a character but no land: deleting E's account still works and removes player, inventory and items.
+begin;
+insert into auth.users (id, email) values ('00000000-0000-4000-a000-00000000000e', 'eko@test.local');
+set role authenticated;
+select tests.claims('00000000-0000-4000-a000-00000000000e');
+select public.create_character('Eko Bello', '{"body":"masc","skin":"brown","headwear":"cap","outfit":"palm"}') is not null as created \gset
+reset role;
+select tests.ok((select count(*) = 1 from public.players where user_id = '00000000-0000-4000-a000-00000000000e'), 'E has a character (no land)');
+delete from auth.users where id = '00000000-0000-4000-a000-00000000000e';
+select tests.ok((select count(*) = 0 from public.players where user_id = '00000000-0000-4000-a000-00000000000e')
+                and (select count(*) = 0 from public.inventories i where not exists (select 1 from public.players p where p.id = i.player_id))
+                and (select count(*) = 6 from public.inventory_items),
+                'deleting an account without land works: player, inventory and items are removed (others untouched)');
+rollback;
+-- C has no character at all: deleting C's account works as before.
+begin;
+delete from auth.users where id = '00000000-0000-4000-a000-00000000000c';
+select tests.ok((select count(*) = 0 from auth.users where id = '00000000-0000-4000-a000-00000000000c'), 'deleting an account without a character works');
+rollback;
+select tests.ok((select count(*) = 2 from public.players) and (select count(*) = 4 from public.ledger_entries),
+                'the deletion probes left players and ledger unchanged');
+
 \echo '== done'

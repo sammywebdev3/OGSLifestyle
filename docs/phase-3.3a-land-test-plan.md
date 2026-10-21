@@ -127,9 +127,40 @@ In a read-only transaction, any write would fail, so nothing can change.
 - `npm run test:db` checks all three paths.
 - After real purchases, prefer a fix-forward migration to a rollback.
 
-**Known side effect:** the foreign keys are `on delete restrict`, so deleting the account of a player who has bought
-land is blocked until an admin deals with their land and ledger. This is deliberate: financial history is not deleted
-silently.
+### Account deletion
+
+**The app has no account-deletion flow.** Accounts can only be deleted by an admin, either in Supabase →
+Authentication → Users, or through the Auth admin API. Nothing in the app calls either.
+
+Since this migration, land and ledger rows reference `players` with `on delete restrict`.
+
+**For a player who owns land** (or has ledger history), deleting the account is **refused by the database**:
+
+- Nothing is removed. The land is not confiscated or transferred, and the ledger is kept.
+- Supabase shows only a generic "Database error deleting user". The SQL Editor shows the exact cause, for example:
+  `violates foreign key constraint "land_plots_owner_player_id_fkey" on table "land_plots"`.
+
+**For a player without land, or a user without a character,** deletion works as before: the player, inventory and
+items are removed.
+
+**Before deleting any account,** run the read-only pre-check `supabase/verify/account_deletion_precheck.sql`:
+
+1. Put the user's UID in its `target` line.
+2. In the SQL Editor, run it wrapped in `begin transaction read only; … rollback;`.
+3. Read the result. It returns `deletable` and a plain `advice` message.
+   - `deletable = true`: deletion is safe, as above.
+   - `deletable = false`, with advice "BLOCKED: this player owns N plot(s) of land …": do not delete the account. Do
+     not drop or bypass the foreign keys, edit `land_plots` or delete ledger rows.
+
+**Resolving land ownership** needs a reviewed, approved fix-forward migration. Phase 3.3A has no tool for it on
+purpose.
+
+**Tests:**
+
+- `npm run test:db` §43 and the pre-check section cover both cases: refused for a land owner with nothing removed;
+  allowed with and without a character.
+- `npm run test:api` deletes users through the real Auth admin API: refused for a land owner, who can still play
+  afterwards; allowed for a player without land, whose old session then stops working.
 
 ## 3. Before you test on the Preview
 
@@ -172,4 +203,5 @@ silently.
 | Fail-safe re-apply; rollback refuses, and the refund path restores cash | `test-db.sh` | No |
 | Request parsing, same origin, body limits, no extra fields, retry ids, mapping, static safety | `npm test` (`src/features/land/*.test.ts`). Ten app-side protections were also mutation-checked by hand. | n/a |
 | Full flow in a browser: buy, confirm, server balance, lost response, retry with the same id, other player, insufficient cash, tampering, cross-site, reload, on-plot prompt, guest | Local production build against throwaway GoTrue + PostgREST + Supabase Postgres containers (Playwright, 26/26 checks) | **No** |
+| The real API routes over HTTP: unauthenticated, no character, bad/oversized/cross-origin bodies, injected fields, purchase, insufficient funds, sold, retries (incl. 5 parallel), cross-player isolation, 500/503 database errors, account deletion via the Auth admin API | `npm run test:api`: production build + local GoTrue, PostgREST and Supabase Postgres; mutation-checked (allowing extra fields makes 8 of 14 tests fail) | **No** (local stand-ins) |
 | Two real accounts on the Preview with the live project | Section 4 | **Not yet** (needs the migration applied, with approval) |

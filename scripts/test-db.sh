@@ -254,6 +254,29 @@ update public.players set cash = cash + 1 where id = (select player_id from publ
 BAD
 echo "PASS: land check fails on $n inconsistent ownership/ledger states (plot owned without a purchase, purchase without an owner, unbalanced transaction, cash changed outside the ledger)"
 
+echo "▶ account deletion pre-check (supabase/verify/account_deletion_precheck.sql)"
+PRECHECK="$ROOT/supabase/verify/account_deletion_precheck.sql"
+precheck() { # $1 = user id; remaining args are extra psql -c statements run BEFORE the check (in the same transaction)
+  local uid=$1 sql; shift
+  sql=$(sed "s/00000000-0000-0000-0000-000000000000/$uid/" "$PRECHECK")
+  grep -q "$uid" <<<"$sql" || { echo "FAIL: could not fill the user id into the pre-check" >&2; exit 1; }
+  if [ $# -eq 0 ]; then psql -X -q -At -F'|' -v ON_ERROR_STOP=1 -c "begin transaction read only" -c "$sql" -c "rollback"
+  else psql -X -q -At -F'|' -v ON_ERROR_STOP=1 -c "begin" "$@" -c "$sql" -c "rollback"; fi
+}
+r=$(precheck 00000000-0000-4000-a000-00000000000a)
+case "$r" in "t|t|1|1|1|1|f|BLOCKED: this player owns 1 plot(s) of land."*) ;; *) echo "FAIL: pre-check for a land owner: $r" >&2; exit 1 ;; esac
+echo "PASS: pre-check for a land owner (read-only): deletable = false, 'BLOCKED: this player owns 1 plot(s) of land…'"
+# (C and D got characters in the concurrency tests above, so fresh users are made inside rolled-back transactions.)
+r=$(precheck 00000000-0000-4000-a000-0000000000f0 -c "insert into auth.users (id, email) values ('00000000-0000-4000-a000-0000000000f0', 'fola@test.local')" | tail -1)
+case "$r" in "t|f|0|0|0|0|t|OK: no land and no transaction history."*) ;; *) echo "FAIL: pre-check for a user without a character: $r" >&2; exit 1 ;; esac
+r=$(precheck 00000000-0000-4000-a000-00000000000e -c "insert into auth.users (id, email) values ('00000000-0000-4000-a000-00000000000e', 'eko@test.local')" \
+     -c "set role authenticated" -c "select tests.claims('00000000-0000-4000-a000-00000000000e')" \
+     -c "select public.create_character('Eko Bello', '{\"body\":\"masc\",\"skin\":\"brown\",\"headwear\":\"cap\",\"outfit\":\"palm\"}')" -c "reset role" | tail -1)
+case "$r" in "t|t|0|0|0|0|t|OK: no land"*) ;; *) echo "FAIL: pre-check for a player without land: $r" >&2; exit 1 ;; esac
+r=$(precheck 00000000-0000-4000-a000-0000000000ff)
+case "$r" in "f|f|0|0|0|0|f|No such user"*) ;; *) echo "FAIL: pre-check for an unknown user: $r" >&2; exit 1 ;; esac
+echo "PASS: pre-check says deletable for a player without land and for a user without a character, and 'No such user' for an unknown id"
+
 echo "▶ land (Phase 3.3A): concurrency tests"
 # Test-only plots (as postgres, disposable database only) so the 12 seeded plots stay as the SQL tests left them.
 psql -X -q -v ON_ERROR_STOP=1 -c "insert into public.land_plots (plot_key, location_id, tier, price, tile_x, tile_y, width, depth) select format('test-%s', lpad(i::text, 2, '0')), 'kuto-street', 'basic', 25000, 0, 0, 1, 1 from generate_series(1, 20) i"
