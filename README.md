@@ -342,6 +342,12 @@ supabase/migrations/        SQL schema, RLS policies, create_character(), land r
   `anon` and `PUBLIC` cannot.
   - It always uses the caller's own user ID (`auth.uid()`); there is no parameter for anyone else's ID.
   - `UNIQUE(user_id)` makes duplicate or simultaneous requests safe.
+- **Security headers** on every response (`src/lib/http/securityHeaders.ts`, wired up in `next.config.ts`):
+  - `nosniff`, `X-Frame-Options: DENY`, a strict referrer policy, a Permissions-Policy, HSTS, and
+    `Cross-Origin-Opener-Policy`.
+  - A Content-Security-Policy that allows only this site and the configured Supabase project. It is in
+    **Report-Only** mode: violations appear in the browser console and nothing is blocked. Enforce it once a signed-in
+    session (Auth, REST, Realtime) has run on the Preview with no violations.
 - **CSRF.** `POST /api/player` accepts only `application/json` and refuses a cross-site `Origin`, on top of
   Supabase's `SameSite=Lax` cookies.
 - **Secret / service-role key.** It is only read in `src/lib/supabase/admin.ts`, which imports `server-only`; the
