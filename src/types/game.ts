@@ -1,6 +1,7 @@
 /** Types shared between the Phaser world and the React UI. */
 import type { AvatarSelection, LocationId } from './player';
 import type { EmoteId } from '@/features/multiplayer/chat';
+import type { PlotStatus } from './land';
 
 export type Direction = 'up' | 'down' | 'left' | 'right';
 
@@ -30,6 +31,9 @@ export interface LocalPlayerState { x: number; y: number; facing: 'left' | 'righ
 /** Another player in the same room, as the scene should draw them. Position in grid tiles. */
 export interface RemotePlayerView extends LocalPlayerState { id: string; name: string; avatar: AvatarSelection }
 
+/** A land plot as the scene draws it. Built from the server's land view; drawing only, it authorizes nothing. */
+export interface PlotView { key: string; x: number; y: number; w: number; d: number; status: PlotStatus; label: string }
+
 /** Events sent from the UI to the game world. */
 export interface UiToWorldEvents {
   'input:direction': { direction: Direction; pressed: boolean };
@@ -45,4 +49,6 @@ export interface UiToWorldEvents {
   'bubble:emote': { id: string; emote: EmoteId };
   /** The chat box has focus: stop reading WASD/E/Space/Enter as game keys. */
   'input:typing': boolean;
+  /** Land plots to draw (replaces the previous set). */
+  'land:plots': PlotView[];
 }

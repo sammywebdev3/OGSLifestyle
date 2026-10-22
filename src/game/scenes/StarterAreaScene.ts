@@ -1,6 +1,6 @@
 import * as Phaser from 'phaser';
 import type { AvatarSelection } from '@/types/player';
-import type { Direction, LocalPlayerState, RemotePlayerView } from '@/types/game';
+import type { Direction, InteractionTarget, LocalPlayerState, PlotView, RemotePlayerView } from '@/types/game';
 import { Smoother } from '@/features/multiplayer/motion';
 import { BubbleTracker, EMOTE_RANGE, INTERACT_RADIUS, clampBubble, nearestWithin, withinRange, type BubbleKind } from '@/features/multiplayer/bubbles';
 import { EMOTES } from '@/features/multiplayer/chat';
@@ -8,8 +8,9 @@ import type { GameBus } from '../events';
 import { depthOf, gridToScreen, moveWithCollision, screenDirToGrid } from '../iso/isoMath';
 import { BUILDINGS, INTERACTABLES, LOCATION_ID, MAP_H, MAP_W, PROPS, SPAWN, buildBlockedSet, isBlockedFn, tileAt, type BuildingDef, type InteractableDef } from '../world/starterArea';
 import { TILE_COLORS, hex } from '../render/colors';
+import { PLOT_TARGET_PREFIX } from '@/features/land/plots';
 import { drawBuilding, drawProp } from '../render/buildings';
-import { tile } from '../render/isoDraw';
+import { fillPoly, isoPoint, strokePoly, tile } from '../render/isoDraw';
 import { PlayerAvatar } from '../entities/PlayerAvatar';
 
 export interface SceneOptions {
@@ -30,6 +31,14 @@ const SELF = 'self';
 /** Bubble bottom edge, in pixels above the character's feet (clears the name tag). */
 const BUBBLE_LIFT = 92;
 
+/** Plot colours by status: fill, outline, label background. */
+const PLOT_STYLE: Record<PlotView['status'], { fill: string; line: string; tag: string; text: string }> = {
+  'for-sale': { fill: '#f2b632', line: '#f2b632', tag: '#b98207', text: 'FOR SALE' },
+  mine: { fill: '#2fb36f', line: '#12935a', tag: '#0b5e3a', text: 'YOURS' },
+  owned: { fill: '#8d9be0', line: '#3a4fb0', tag: '#1f2f6b', text: 'SOLD' },
+  unknown: { fill: '#f4ead2', line: '#f4ead2', tag: '#111a3d', text: 'PLOT' },
+};
+
 /** Kuto street corner: floor, buildings, props, a controllable player and interaction spots. */
 export class StarterAreaScene extends Phaser.Scene {
   private opts: SceneOptions;
@@ -40,7 +49,6 @@ export class StarterAreaScene extends Phaser.Scene {
   private touch: Record<Direction, boolean> = { up: false, down: false, left: false, right: false };
   private buildings: { def: BuildingDef; obj: Phaser.GameObjects.Container }[] = [];
   private markers = new Map<string, Phaser.GameObjects.Graphics>();
-  private nearby: InteractableDef | null = null;
   private paused = false;
   private facing: LocalPlayerState['facing'] = 'right';
   private remotes = new Map<string, RemoteAvatar>();
@@ -48,6 +56,9 @@ export class StarterAreaScene extends Phaser.Scene {
   private bubbleViews = new Map<string, BubbleView>();
   private bubbleSerial = 0;
   private nearbyId: string | null = null;
+  private plots: PlotView[] = [];
+  private plotObjects: Phaser.GameObjects.GameObject[] = [];
+  private nearbyTarget: InteractionTarget | null = null;
   private unsubscribe: (() => void)[] = [];
 
   constructor(opts: SceneOptions) {
@@ -101,6 +112,7 @@ export class StarterAreaScene extends Phaser.Scene {
         if (id !== SELF && (!r || !withinRange(r.motion, this.pos, EMOTE_RANGE))) return;
         this.showBubble(id, 'emote', EMOTES[emote].icon);
       }),
+      ui.on('land:plots', (plots) => this.setPlots(plots)),
       ui.on('input:typing', (typing) => {
         const kb = this.input.keyboard;
         if (!kb) return;
@@ -113,6 +125,7 @@ export class StarterAreaScene extends Phaser.Scene {
       this.unsubscribe.forEach((u) => u());
       for (const id of [...this.remotes.keys()]) this.removeRemote(id);
       this.hideBubble(SELF);
+      this.setPlots([]);
     });
     world.emit('ready', { locationId: LOCATION_ID });
   }
@@ -139,6 +152,29 @@ export class StarterAreaScene extends Phaser.Scene {
     g.fillStyle(hex('#f2b632'), 0.18); g.fillEllipse(0, 0, 34, 16);
     this.tweens.add({ targets: g, alpha: { from: 0.45, to: 1 }, duration: 800, yoyo: true, repeat: -1 });
     return g;
+  }
+
+  /** Draw the land plots on the ground (replacing the previous set). Purely visual. */
+  private setPlots(plots: PlotView[]) {
+    this.plotObjects.forEach((o) => o.destroy());
+    this.plotObjects = [];
+    this.plots = plots.filter((p) => p.x >= 0 && p.y >= 0 && p.w > 0 && p.d > 0 && p.x + p.w <= MAP_W && p.y + p.d <= MAP_H);
+    for (const p of this.plots) {
+      const style = PLOT_STYLE[p.status];
+      const corners = [isoPoint(p.x, p.y), isoPoint(p.x + p.w, p.y), isoPoint(p.x + p.w, p.y + p.d), isoPoint(p.x, p.y + p.d)];
+      const inner = [isoPoint(p.x + 0.12, p.y + 0.12), isoPoint(p.x + p.w - 0.12, p.y + 0.12), isoPoint(p.x + p.w - 0.12, p.y + p.d - 0.12), isoPoint(p.x + 0.12, p.y + p.d - 0.12)];
+      const g = this.add.graphics().setDepth(-999);
+      fillPoly(g, style.fill, corners, p.status === 'mine' ? 0.32 : 0.2);
+      strokePoly(g, style.line, inner, 2, 0.95);
+      // Corner pegs, like a surveyed plot.
+      g.fillStyle(hex('#fff6e5'), 0.95);
+      for (const c of inner) g.fillRect(c.x - 2, c.y - 5, 4, 6);
+      const c = gridToScreen(p.x + p.w / 2, p.y + p.d / 2);
+      const label = this.add.text(c.x, c.y, `${p.key.slice(-2)} · ${style.text}`, {
+        fontFamily: 'Trebuchet MS, sans-serif', fontSize: '10px', fontStyle: 'bold', color: '#fff6e5', backgroundColor: style.tag, padding: { x: 4, y: 2 },
+      }).setOrigin(0.5).setDepth(-998).setAlpha(0.92);
+      this.plotObjects.push(g, label);
+    }
   }
 
   private placePlayer() {
@@ -223,9 +259,8 @@ export class StarterAreaScene extends Phaser.Scene {
   }
 
   private interact() {
-    if (this.paused || !this.nearby) return;
-    const { x: _x, y: _y, radius: _r, ...target } = this.nearby;
-    this.opts.bus.world.emit('interaction:triggered', target);
+    if (this.paused || !this.nearbyTarget) return;
+    this.opts.bus.world.emit('interaction:triggered', this.nearbyTarget);
   }
 
   update(_time: number, deltaMs: number) {
@@ -277,9 +312,15 @@ export class StarterAreaScene extends Phaser.Scene {
       const d = Math.hypot(this.pos.x - it.x, this.pos.y - it.y);
       if (d <= it.radius && d < bestD) { best = it; bestD = d; }
     }
-    if (best?.id === this.nearby?.id) return;
-    this.nearby = best;
-    if (best) { const { x: _x, y: _y, radius: _r, ...target } = best; this.opts.bus.world.emit('interaction:available', target); }
-    else this.opts.bus.world.emit('interaction:available', null);
+    let target: InteractionTarget | null = null;
+    if (best) { const { x: _x, y: _y, radius: _r, ...t } = best; target = t; }
+    else {
+      // Standing on a plot offers to look at it. This is a shortcut only: the server decides every purchase.
+      const plot = this.plots.find((p) => this.pos.x >= p.x && this.pos.x < p.x + p.w && this.pos.y >= p.y && this.pos.y < p.y + p.d);
+      if (plot) target = { id: `${PLOT_TARGET_PREFIX}${plot.key}`, label: plot.label, verb: 'View', description: '' };
+    }
+    if ((target?.id ?? null) === (this.nearbyTarget?.id ?? null) && target?.label === this.nearbyTarget?.label) return;
+    this.nearbyTarget = target;
+    this.opts.bus.world.emit('interaction:available', target);
   }
 }

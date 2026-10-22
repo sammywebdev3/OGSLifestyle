@@ -25,6 +25,8 @@ interface PlayerContextValue extends PlayerState {
   refresh: () => Promise<void>;
   createCharacter: (input: CreateCharacterInput, mode: PlayerMode) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Show the balance a server response just reported (e.g. after buying land). Never a client-side calculation. */
+  applyServerCash: (cash: number) => void;
 }
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -90,7 +92,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setState({ status: 'signed-out', mode: 'guest', player: null, inventory: null, error: null });
   }, []);
 
-  const value = useMemo(() => ({ ...state, onlineAvailable, refresh, createCharacter, signOut }), [state, onlineAvailable, refresh, createCharacter, signOut]);
+  const applyServerCash = useCallback((cash: number) => {
+    if (!Number.isSafeInteger(cash) || cash < 0) return;
+    setState((s) => (s.mode === 'online' && s.player ? { ...s, player: { ...s.player, cash } } : s));
+  }, []);
+
+  const value = useMemo(() => ({ ...state, onlineAvailable, refresh, createCharacter, signOut, applyServerCash }), [state, onlineAvailable, refresh, createCharacter, signOut, applyServerCash]);
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }
 

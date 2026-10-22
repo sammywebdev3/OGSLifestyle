@@ -51,8 +51,10 @@ select tests.ok(not has_function_privilege('anon', 'public.get_player_profiles(u
 select tests.ok(has_function_privilege('authenticated', 'public.get_player_profiles(uuid[])', 'execute'),
                 'authenticated can call get_player_profiles');
 select tests.ok((select count(*) = 0 from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r'
-                 and relname not in ('players', 'inventories', 'inventory_items')),
-                'no new tables in public');
+                 and relname not in ('players', 'inventories', 'inventory_items',
+                                     -- Phase 3.3A economy tables: no client privileges at all (phase3_3a_land.test.sql)
+                                     'land_plots', 'economy_transactions', 'ledger_entries', 'economic_requests')),
+                'no tables in public beyond Phase 1 and the Phase 3.3A economy tables');
 
 \echo '== 11. Anonymous visitors (anon)'
 set role anon;
@@ -133,8 +135,13 @@ reset role;
 -- call, these fail until someone checks it cannot leak other players' ids.
 select tests.ok((select array_agg(p.proname::text order by p.proname) from pg_proc p
                  where p.pronamespace = 'public'::regnamespace and has_function_privilege('authenticated', p.oid, 'execute'))
-                = array['create_character', 'get_player_profiles', 'mp_my_player_id'],
-                'authenticated can call exactly create_character, get_player_profiles and mp_my_player_id');
+                = array['buy_land_plot', 'create_character', 'get_land_plots', 'get_my_land', 'get_player_profiles', 'mp_my_player_id'],
+                'authenticated can call exactly create_character, get_player_profiles, mp_my_player_id and the 3 Phase 3.3A land functions');
+-- Phase 3.3A: the land functions return no player ids (only character names and owned_by_me).
+select tests.ok(not exists (select 1 from information_schema.parameters p join information_schema.routines r on r.specific_name = p.specific_name
+                 where r.routine_schema = 'public' and r.routine_name in ('get_land_plots', 'get_my_land') and p.parameter_mode = 'OUT'
+                   and (p.parameter_name::text like '%player%' or p.parameter_name::text like '%user%' or p.data_type = 'uuid' and p.parameter_name::text <> 'transaction_id')),
+                'the land read functions return no player or user ids');
 select tests.ok(not exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and has_function_privilege('anon', p.oid, 'execute')),
                 'anon can call no public function');
 select tests.ok((select count(*) = 0 from pg_class where relnamespace = 'public'::regnamespace and relkind in ('v', 'm')),

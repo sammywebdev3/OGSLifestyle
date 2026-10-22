@@ -7,15 +7,16 @@ export interface Snapshot {
 }
 
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string, public readonly details: string[] = []) {
+  constructor(public readonly status: number, message: string, public readonly details: string[] = [], public readonly code?: string) {
     super(message);
   }
 }
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
+/** JSON call to our own API. Non-2xx answers become an ApiError with the server's message (and code, if any). */
+export async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { ...init, headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) }, cache: 'no-store' });
-  const body = (await res.json().catch(() => ({}))) as { error?: string; details?: string[] } & T;
-  if (!res.ok) throw new ApiError(res.status, body.error ?? `Request failed (${res.status})`, body.details ?? []);
+  const body = (await res.json().catch(() => ({}))) as { error?: string; details?: string[]; code?: string } & T;
+  if (!res.ok) throw new ApiError(res.status, body.error ?? `Request failed (${res.status})`, body.details ?? [], body.code);
   return body;
 }
 

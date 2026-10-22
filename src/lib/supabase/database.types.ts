@@ -23,6 +23,92 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      economic_requests: {
+        Row: {
+          created_at: string
+          idempotency_key: string
+          kind: string
+          player_id: string
+          plot_id: string
+          transaction_id: string
+        }
+        Insert: {
+          created_at?: string
+          idempotency_key: string
+          kind: string
+          player_id: string
+          plot_id: string
+          transaction_id: string
+        }
+        Update: {
+          created_at?: string
+          idempotency_key?: string
+          kind?: string
+          player_id?: string
+          plot_id?: string
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "economic_requests_player_id_fkey"
+            columns: ["player_id"]
+            referencedRelation: "players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "economic_requests_plot_id_fkey"
+            columns: ["plot_id"]
+            referencedRelation: "land_plots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "economic_requests_transaction_id_fkey"
+            columns: ["transaction_id"]
+            referencedRelation: "economy_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      economy_transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          kind: string
+          player_id: string
+          plot_id: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          kind: string
+          player_id: string
+          plot_id?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          kind?: string
+          player_id?: string
+          plot_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "economy_transactions_player_id_fkey"
+            columns: ["player_id"]
+            referencedRelation: "players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "economy_transactions_plot_id_fkey"
+            columns: ["plot_id"]
+            referencedRelation: "land_plots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventories: {
         Row: {
           created_at: string
@@ -73,6 +159,101 @@ export type Database = {
           },
         ]
       }
+      land_plots: {
+        Row: {
+          acquired_at: string | null
+          created_at: string
+          depth: number
+          id: string
+          location_id: string
+          owner_player_id: string | null
+          plot_key: string
+          price: number
+          tier: string
+          tile_x: number
+          tile_y: number
+          width: number
+        }
+        Insert: {
+          acquired_at?: string | null
+          created_at?: string
+          depth: number
+          id?: string
+          location_id: string
+          owner_player_id?: string | null
+          plot_key: string
+          price: number
+          tier: string
+          tile_x: number
+          tile_y: number
+          width: number
+        }
+        Update: {
+          acquired_at?: string | null
+          created_at?: string
+          depth?: number
+          id?: string
+          location_id?: string
+          owner_player_id?: string | null
+          plot_key?: string
+          price?: number
+          tier?: string
+          tile_x?: number
+          tile_y?: number
+          width?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "land_plots_owner_player_id_fkey"
+            columns: ["owner_player_id"]
+            referencedRelation: "players"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ledger_entries: {
+        Row: {
+          account: string
+          amount: number
+          balance_after: number | null
+          created_at: string
+          id: number
+          player_id: string | null
+          transaction_id: string
+        }
+        Insert: {
+          account: string
+          amount: number
+          balance_after?: number | null
+          created_at?: string
+          id?: never
+          player_id?: string | null
+          transaction_id: string
+        }
+        Update: {
+          account?: string
+          amount?: number
+          balance_after?: number | null
+          created_at?: string
+          id?: never
+          player_id?: string | null
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ledger_entries_player_id_fkey"
+            columns: ["player_id"]
+            referencedRelation: "players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ledger_entries_transaction_id_fkey"
+            columns: ["transaction_id"]
+            referencedRelation: "economy_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       players: {
         Row: {
           avatar: Json
@@ -108,6 +289,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      buy_land_plot: {
+        Args: {
+          p_plot_key: string
+          p_idempotency_key: string
+        }
+        Returns: Json
+      }
       create_character: {
         Args: {
           p_name: string
@@ -122,6 +310,31 @@ export type Database = {
           location: string
           user_id: string
         }
+      }
+      get_land_plots: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          plot_key: string
+          location_id: string
+          tier: string
+          price: number
+          tile_x: number
+          tile_y: number
+          width: number
+          depth: number
+          owner_name: string
+          owned_by_me: boolean
+        }[]
+      }
+      get_my_land: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          plot_key: string
+          tier: string
+          price_paid: number
+          acquired_at: string
+          transaction_id: string
+        }[]
       }
       get_player_profiles: {
         Args: {
