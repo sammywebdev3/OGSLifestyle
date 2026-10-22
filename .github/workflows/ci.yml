@@ -1,0 +1,56 @@
+# Continuous integration for OGUN STATE LIFESTYLE.
+#
+# Added by the project audit (docs/MASTER_COMPLETION_CHECKLIST.md). It runs only checks; it never deploys,
+# never touches Supabase projects, and uses no secrets. The app falls back to offline guest mode when Supabase
+# variables are missing, so the build needs none.
+#
+# NOT YET RUN: this file was written without being able to run it. Its first run on GitHub is the first proof
+# that it works. If a job fails on its first run, read the log; the cause is as likely to be this file as the code.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: Typecheck, unit tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # package.json "test" needs Node 22.6+ (--experimental-strip-types).
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  database:
+    name: Database and API tests (Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Informational at first: these start Supabase Postgres/Auth/PostgREST containers. Remove this line, and
+    # make the job required in branch protection, once it has passed a few times.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: npm run test:db
+      - run: npm run test:api
