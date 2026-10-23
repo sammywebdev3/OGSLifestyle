@@ -37,7 +37,9 @@ export default function GameCanvas({ avatar, characterName, bus }: { avatar: Ava
   return (
     <div className="absolute inset-0">
       <div ref={hostRef} className="game-host absolute inset-0" aria-label="Game world" />
-      {state === 'loading' && <div className="absolute inset-0 grid place-items-center bg-adire-900 text-cream"><Spinner label="Building Kuto…" /></div>}
+      {/* Soft vignette: frames the scene and keeps the HUD readable. A CSS gradient costs the game nothing. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_55%,rgba(17,26,61,0.38)_100%)]" />
+      {state === 'loading' && <div className="absolute inset-0 grid place-items-center bg-adire-900 bg-adire-dots text-cream [background-size:18px_18px]"><Spinner label="Building Kuto…" /></div>}
       {state === 'error' && (
         <div className="absolute inset-0 grid place-items-center bg-adire-900 p-6 text-center text-cream">
           <div>

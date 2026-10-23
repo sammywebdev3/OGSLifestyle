@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/Button';
 /** "Press E" prompt shown when the player stands near something interactive. */
 export function InteractionPrompt({ target, onInteract }: { target: InteractionTarget; onInteract: () => void }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-28 flex justify-center px-4 sm:bottom-8">
-      <button type="button" onClick={onInteract} className="pointer-events-auto flex items-center gap-2 rounded-full bg-palm-500 px-4 py-2.5 font-bold text-ink shadow-pop">
-        <kbd className="rounded-md bg-ink px-1.5 py-0.5 text-xs font-black text-palm-300">E</kbd>
-        {target.verb}: {target.label}
+    // On touch screens it sits above the D-pad (bottom left), so the two never overlap.
+    <div className="pointer-events-none absolute inset-x-0 bottom-8 flex justify-center px-4 [@media(pointer:coarse)]:bottom-[calc(13rem_+_env(safe-area-inset-bottom))]">
+      <button type="button" onClick={onInteract} className="pointer-events-auto flex max-w-full items-center gap-2 rounded-full bg-palm-500 py-2 pl-2 pr-4 font-bold text-ink shadow-pop ring-2 ring-palm-300/80 transition-transform active:scale-95">
+        <kbd className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-ink text-xs font-black text-palm-300">E</kbd>
+        <span className="truncate">{target.verb}: {target.label}</span>
       </button>
     </div>
   );

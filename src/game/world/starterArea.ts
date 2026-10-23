@@ -62,6 +62,22 @@ export const PROPS: PropDef[] = [
 /** Tiles a prop occupies for collision (palms and generator are solid, the bench is not). */
 export const SOLID_PROPS: PropDef['kind'][] = ['palm', 'generator', 'okada', 'board'];
 
+/**
+ * Street furniture that makes Kuto feel lived in. Each one is solid (one tile, like a palm) and is
+ * placed off every plot, door, interaction spot and the spawn; tests check that every plot, door
+ * and interaction spot can still be reached on foot from the spawn.
+ */
+export interface DecorDef { kind: 'lamp' | 'chairs' | 'umbrella' | 'drum' | 'pots' | 'tree' | 'tyres' | 'crates'; x: number; y: number }
+
+export const DECOR: DecorDef[] = [
+  { kind: 'lamp', x: 1, y: 8 }, { kind: 'lamp', x: 12, y: 8 }, { kind: 'lamp', x: 18, y: 8 },
+  { kind: 'lamp', x: 10, y: 11 }, { kind: 'lamp', x: 16, y: 11 },
+  { kind: 'chairs', x: 12, y: 5 }, { kind: 'umbrella', x: 13, y: 5 },
+  { kind: 'pots', x: 2, y: 5 }, { kind: 'pots', x: 6, y: 5 },
+  { kind: 'drum', x: 1, y: 12 }, { kind: 'tyres', x: 2, y: 13 }, { kind: 'crates', x: 18, y: 14 },
+  { kind: 'tree', x: 0, y: 2 }, { kind: 'tree', x: 19, y: 5 }, { kind: 'tree', x: 8, y: 17 },
+];
+
 export const INTERACTABLES: InteractableDef[] = [
   { id: 'apartment-door', label: 'Your apartment', verb: 'Enter', description: 'Your self-contain on the ground floor of Kuto Court. Go inside to rest and check your things.', x: 4.5, y: 5.6, radius: 1.1 },
   { id: 'buka', label: 'Iya Basira Buka', verb: 'Talk', description: '"Amala, ewedu, gbegiri — hot hot! My kitchen opens properly soon, my dear." (Food and needs arrive in Phase 2.)', x: 10.5, y: 6.6, radius: 1.2 },
@@ -75,6 +91,7 @@ export function buildBlockedSet(): Set<string> {
   const blocked = new Set<string>();
   for (const b of BUILDINGS) for (let x = b.x; x < b.x + b.w; x++) for (let y = b.y; y < b.y + b.d; y++) blocked.add(`${x},${y}`);
   for (const p of PROPS) if (SOLID_PROPS.includes(p.kind)) blocked.add(`${p.x},${p.y}`);
+  for (const d of DECOR) blocked.add(`${d.x},${d.y}`);
   return blocked;
 }
 
