@@ -72,6 +72,7 @@ export function AuthForm({ mode, errorCode = null }: { mode: Mode; errorCode?: A
         <label className="block text-sm font-semibold">Password
           <input name="password" type="password" required minLength={8} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} className="mt-1 w-full rounded-xl border border-ink/15 bg-white px-3 py-2.5 text-base outline-none focus:border-ogun-500 focus:ring-2 focus:ring-ogun-500/30" />
         </label>
+        {mode === 'login' && <p className="-mt-2 text-right text-sm"><Link className="text-ogun-600 underline" href="/forgot-password">Forgot password?</Link></p>}
         {error ? <Notice tone="error">{error}</Notice> : null}
         {info ? <Notice tone="success">{info}</Notice> : null}
         <Button type="submit" disabled={busy} className="w-full">{busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}</Button>

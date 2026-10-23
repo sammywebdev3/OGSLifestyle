@@ -53,6 +53,22 @@ async function api(path, { method = 'GET', who, body, headers = {}, raw } = {}) 
   try { json = JSON.parse(text); } catch { /* not JSON */ }
   return { status: res.status, json, text };
 }
+/**
+ * Poll GET /api/land until it answers `status` several times IN A ROW. PostgREST reloads its schema
+ * cache asynchronously after `notify pgrst, 'reload schema'`, and a single matching answer was seen
+ * to flip back on a slow CI runner, so one match is not proof the reload has settled.
+ */
+async function settleLand(who, status, { inARow = 5, timeoutMs = 30_000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let streak = 0; let last;
+  while (Date.now() < deadline) {
+    last = await api('/api/land', { who });
+    streak = last.status === status ? streak + 1 : 0;
+    if (streak >= inARow) return last;
+    await sleep(200);
+  }
+  throw new Error(`GET /api/land did not settle on ${status} within ${timeoutMs} ms (last: ${last?.status} ${last?.text?.slice(0, 120)})`);
+}
 const buy = (who, plotKey, requestId = newId(), extra = {}) => api('/api/land/buy', { method: 'POST', who, body: { plotKey, requestId, ...extra } });
 const createCharacter = (who, characterName) => api('/api/player', { method: 'POST', who, body: { characterName, avatar: { body: 'femme', skin: 'warm', headwear: 'gele', outfit: 'adire' } } });
 
@@ -217,14 +233,13 @@ test('unexpected database errors give a clear server error and charge nothing', 
   // (c) the land functions are missing (migration not applied): 503 "not open yet"
   sql('alter function public.get_land_plots() rename to get_land_plots_hidden; notify pgrst, \'reload schema\'');
   try {
-    let r;
-    for (let i = 0; i < 40; i++) { r = await api('/api/land', { who: C }); if (r.status === 503) break; await sleep(250); }
-    assert.equal(r.status, 503); assert.equal(r.json.code, 'unavailable'); assert.equal(r.json.error, 'Land is not open on this server yet.');
+    const r = await settleLand(C, 503);
+    assert.equal(r.json.code, 'unavailable'); assert.equal(r.json.error, 'Land is not open on this server yet.');
   } finally {
     sql('alter function public.get_land_plots_hidden() rename to get_land_plots; notify pgrst, \'reload schema\'');
-    for (let i = 0; i < 40; i++) { if ((await api('/api/land', { who: C })).status === 200) break; await sleep(250); }
+    // Later tests need the land functions back: wait until the reload has really settled.
+    await settleLand(C, 200);
   }
-  assert.equal((await api('/api/land', { who: C })).status, 200);
 });
 
 test('account deletion: refused for a land owner (nothing removed), still works for a player without land', async () => {

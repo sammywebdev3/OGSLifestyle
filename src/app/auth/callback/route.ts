@@ -8,16 +8,19 @@ import { codeFromSupabaseError } from '@/features/auth/authErrors';
  */
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
-  const toLogin = (code: string) => NextResponse.redirect(new URL(`/login?error=${code}`, url.origin));
-
-  // Supabase sends errors (e.g. an expired link) as query parameters.
-  const supabaseError = codeFromSupabaseError(url.searchParams.get('error_code'), url.searchParams.get('error'));
-  if (supabaseError) return toLogin(supabaseError);
-
   const code = url.searchParams.get('code');
   const nextPath = url.searchParams.get('next');
   // Only same-site relative paths (no "//host" or "/\host" tricks).
   const safeNext = nextPath && /^\/(?![/\\])/.test(nextPath) ? nextPath : '/create';
+  // A failed password-reset link goes back to "forgot password" (to request a new one), not to sign-in.
+  const isReset = safeNext === '/reset-password';
+  const toLogin = (failure: string) => NextResponse.redirect(new URL(isReset
+    ? `/forgot-password?error=${failure === 'link-expired' ? 'reset-link-expired' : 'reset-callback'}`
+    : `/login?error=${failure}`, url.origin));
+
+  // Supabase sends errors (e.g. an expired link) as query parameters.
+  const supabaseError = codeFromSupabaseError(url.searchParams.get('error_code'), url.searchParams.get('error'));
+  if (supabaseError) return toLogin(supabaseError);
 
   const db = await getServerSupabase();
   if (!db || !code) return toLogin('callback');
