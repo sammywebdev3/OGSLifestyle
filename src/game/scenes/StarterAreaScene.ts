@@ -5,13 +5,20 @@ import { Smoother } from '@/features/multiplayer/motion';
 import { BubbleTracker, EMOTE_RANGE, INTERACT_RADIUS, clampBubble, nearestWithin, withinRange, type BubbleKind } from '@/features/multiplayer/bubbles';
 import { EMOTES } from '@/features/multiplayer/chat';
 import type { GameBus } from '../events';
-import { depthOf, gridToScreen, moveWithCollision, screenDirToGrid } from '../iso/isoMath';
-import { BUILDINGS, INTERACTABLES, LOCATION_ID, MAP_H, MAP_W, PROPS, SPAWN, buildBlockedSet, isBlockedFn, tileAt, type BuildingDef, type InteractableDef } from '../world/starterArea';
-import { TILE_COLORS, hex } from '../render/colors';
+import { gridToScreen, moveWithCollision, screenDirToGrid } from '../iso/isoMath';
+import { characterDepth, staticRanks, type Footprint, type SortItem } from '../iso/depthSort';
+import { BUILDINGS, DECOR, INTERACTABLES, LOCATION_ID, MAP_H, MAP_W, PROPS, SPAWN, buildBlockedSet, isBlockedFn, type InteractableDef } from '../world/starterArea';
+import { BACKDROP_BUILDINGS, OUTSKIRT_SCENERY } from '../world/scenery';
+import { hex } from '../render/colors';
+import { baseZoom } from '../render/viewport';
 import { PLOT_TARGET_PREFIX } from '@/features/land/plots';
-import { drawBuilding, drawProp } from '../render/buildings';
-import { fillPoly, isoPoint, strokePoly, tile } from '../render/isoDraw';
-import { PlayerAvatar } from '../entities/PlayerAvatar';
+import { fillPoly, isoPoint, strokePoly } from '../render/isoDraw';
+import { PlayerAvatar, NAME_TAG_LIFT } from '../entities/PlayerAvatar';
+import { RES } from '../art/canvasIso';
+import { GROUND_KEY, GROUND_OFFSET, installGround } from '../art/groundArt';
+import { OUTSKIRTS, groundFrame, insideMap } from '../art/groundLayout';
+import { addBuilding, installBuilding, releaseShadow, shadowStamp } from '../art/buildingArt';
+import { addProp, installProps, type ArtKind } from '../art/propArt';
 
 export interface SceneOptions {
   avatar: AvatarSelection;
@@ -29,7 +36,7 @@ interface RemoteAvatar { name: string; avatar: PlayerAvatar; motion: Smoother; f
 interface BubbleView { container: Phaser.GameObjects.Container; width: number; height: number }
 const SELF = 'self';
 /** Bubble bottom edge, in pixels above the character's feet (clears the name tag). */
-const BUBBLE_LIFT = 92;
+const BUBBLE_LIFT = NAME_TAG_LIFT + 20;
 
 /** Plot colours by status: fill, outline, label background. */
 const PLOT_STYLE: Record<PlotView['status'], { fill: string; line: string; tag: string; text: string }> = {
@@ -47,7 +54,11 @@ export class StarterAreaScene extends Phaser.Scene {
   private isBlocked = isBlockedFn(buildBlockedSet());
   private keys!: Record<'up' | 'down' | 'left' | 'right' | 'w' | 'a' | 's' | 'd' | 'e' | 'space' | 'enter', Phaser.Input.Keyboard.Key>;
   private touch: Record<Direction, boolean> = { up: false, down: false, left: false, right: false };
-  private buildings: { def: BuildingDef; obj: Phaser.GameObjects.Container }[] = [];
+  /** Everything that stands up from the ground, in draw order (see iso/depthSort). */
+  private statics: (SortItem & { obj: Phaser.GameObjects.Image | Phaser.GameObjects.Graphics })[] = [];
+  private ranks: number[] = [];
+  /** What the camera can ever show (world px): the ground is painted for exactly this area. */
+  private view = { x: 0, y: 0, w: 0, h: 0 };
   private markers = new Map<string, Phaser.GameObjects.Graphics>();
   private paused = false;
   private facing: LocalPlayerState['facing'] = 'right';
@@ -58,6 +69,8 @@ export class StarterAreaScene extends Phaser.Scene {
   private nearbyId: string | null = null;
   private plots: PlotView[] = [];
   private plotObjects: Phaser.GameObjects.GameObject[] = [];
+  /** Plot labels: a short tag from afar, the full status when you walk close. */
+  private plotLabels: { plot: PlotView; text: Phaser.GameObjects.Text; near: boolean }[] = [];
   private nearbyTarget: InteractionTarget | null = null;
   private unsubscribe: (() => void)[] = [];
 
@@ -67,25 +80,37 @@ export class StarterAreaScene extends Phaser.Scene {
   }
 
   create() {
+    // All art is painted once into textures here (no image files to download), then drawn as quads.
+    const corners = [gridToScreen(0, 0), gridToScreen(MAP_W, 0), gridToScreen(0, MAP_H), gridToScreen(MAP_W, MAP_H)];
+    const minX = Math.min(...corners.map((c) => c.x)); const maxX = Math.max(...corners.map((c) => c.x));
+    const minY = Math.min(...corners.map((c) => c.y)); const maxY = Math.max(...corners.map((c) => c.y));
+    this.view = { x: minX - 160, y: minY - 240, w: maxX - minX + 320, h: maxY - minY + 360 };
+
+    installGround(this);
+    installProps(this);
+    for (const def of BACKDROP_BUILDINGS) installBuilding(this, def, { backdrop: true });
+    for (const def of BUILDINGS) installBuilding(this, def);
     this.drawFloor();
-    for (const def of BUILDINGS) this.buildings.push({ def, obj: drawBuilding(this, def) });
-    for (const p of PROPS) {
-      const s = gridToScreen(p.x + 0.5, p.y + 0.5);
-      drawProp(this, p).setPosition(s.x, s.y).setDepth(depthOf(p.x + 0.5, p.y + 0.5));
-    }
+    const tile = (x: number, y: number): Footprint => ({ x0: x, y0: y, x1: x + 1, y1: y + 1 });
+    for (const def of [...BACKDROP_BUILDINGS, ...BUILDINGS]) this.addStatic({ x0: def.x, y0: def.y, x1: def.x + def.w, y1: def.y + def.d }, addBuilding(this, def));
+    for (const p of PROPS) this.addStatic(tile(p.x, p.y), this.placeArt(p.kind, p.x, p.y));
+    for (const d of DECOR) this.addStatic(tile(d.x, d.y), this.placeArt(d.kind, d.x, d.y));
+    for (const o of OUTSKIRT_SCENERY) this.addStatic(tile(o.x, o.y), this.placeArt(o.kind, o.x, o.y));
     for (const it of INTERACTABLES) this.markers.set(it.id, this.drawMarker(it));
+    this.ranks = staticRanks(this.statics);
+    this.statics.forEach((st, i) => st.obj.setDepth(this.ranks[i]!));
 
     this.player = new PlayerAvatar(this, this.opts.avatar, this.opts.characterName);
     this.placePlayer();
 
-    // Camera: follow the player within the map bounds.
-    const corners = [gridToScreen(0, 0), gridToScreen(MAP_W, 0), gridToScreen(0, MAP_H), gridToScreen(MAP_W, MAP_H)];
-    const minX = Math.min(...corners.map((c) => c.x)); const maxX = Math.max(...corners.map((c) => c.x));
-    const minY = Math.min(...corners.map((c) => c.y)); const maxY = Math.max(...corners.map((c) => c.y));
-    this.cameras.main.setBounds(minX - 120, minY - 220, maxX - minX + 240, maxY - minY + 320);
+    // Camera: follow the player within the map (plus a margin of outskirts).
+    this.cameras.main.setBounds(this.view.x, this.view.y, this.view.w, this.view.h);
     this.cameras.main.startFollow(this.player.container, true, 0.12, 0.12);
-    this.cameras.main.setZoom(this.scale.width < 640 ? 0.9 : 1.15);
-    this.scale.on('resize', (size: Phaser.Structs.Size) => this.cameras.main.setZoom(size.width < 640 ? 0.9 : 1.15));
+    // The canvas is rendered at renderScale × CSS pixels (see createGame), so zoom by the same factor.
+    const rs = (this.registry.get('renderScale') as number | undefined) ?? 1;
+    const zoomFor = (gameWidth: number) => baseZoom(gameWidth / rs) * rs;
+    this.cameras.main.setZoom(zoomFor(this.scale.width));
+    this.scale.on('resize', (size: Phaser.Structs.Size) => this.cameras.main.setZoom(zoomFor(size.width)));
 
     // Keyboard: arrows or WASD to move, E / Space / Enter to interact.
     const kb = this.input.keyboard!;
@@ -130,34 +155,94 @@ export class StarterAreaScene extends Phaser.Scene {
     world.emit('ready', { locationId: LOCATION_ID });
   }
 
+  /**
+   * The ground. Tiles are laid with a Blitter (overhanging grass tufts layered back to front), the
+   * buildings' soft shadows are laid over them, and the result is painted once into a few chunk textures covering exactly what the camera can show, so at run time
+   * every screen pixel of ground is drawn once. Chunks are sized to the render scale (sharp on HiDPI
+   * phones) and at most 1024 px a side, which every phone GPU accepts.
+   */
   private drawFloor() {
-    const g = this.add.graphics().setDepth(-1000);
-    for (let x = 0; x < MAP_W; x++) for (let y = 0; y < MAP_H; y++) {
-      const kind = tileAt(x, y);
-      const [a, b] = TILE_COLORS[kind];
-      tile(g, x, y, (x + y) % 2 ? a : b);
+    const rs = (this.registry.get('renderScale') as number | undefined) ?? 1;
+    const tiles = this.make.blitter({ key: GROUND_KEY }, false);
+    const v = this.view;
+    const reach = 40; // grid range to scan; only tiles whose picture touches the view are laid
+    for (let s = -2 * reach; s <= 2 * reach + MAP_W + MAP_H; s++) { // back to front, so tufts layer correctly
+      for (let x = -reach; x < MAP_W + reach; x++) {
+        const y = s - x;
+        if (y < -reach || y >= MAP_H + reach) continue;
+        const p = gridToScreen(x, y);
+        if (p.x + 40 < v.x || p.x - 40 > v.x + v.w || p.y + 40 < v.y || p.y - 8 > v.y + v.h) continue;
+        const bob = tiles.create((p.x + GROUND_OFFSET.x) * RES, (p.y + GROUND_OFFSET.y) * RES, groundFrame(x, y));
+        if (!insideMap(x, y)) { // the outskirts dim and cool towards the haze
+          const out = Math.max(-x, -y, x - MAP_W + 1, y - MAP_H + 1, 0);
+          const k = Math.min(1, out / OUTSKIRTS);
+          const c = Math.round(255 - 70 * k); const b = Math.round(255 - 40 * k);
+          bob.setTint((c << 16) | (c << 8) | b);
+        }
+      }
     }
-    // road markings
-    g.fillStyle(hex('#f2b632'));
-    for (let x = 0; x < MAP_W; x += 2) {
-      const p = gridToScreen(x + 0.5, 10);
-      g.fillRect(p.x - 8, p.y - 1, 16, 2);
+    const shadows = [...BACKDROP_BUILDINGS, ...BUILDINGS].map((b) => {
+      const st = shadowStamp(this, b);
+      return { img: this.make.image({ key: st.key, origin: 0 }, false), x: st.x, y: st.y };
+    });
+    const chunk = Math.floor(1024 / rs) - 2; // world px per chunk; +2 overlap hides seams
+    let n = 0;
+    for (let cy = v.y; cy < v.y + v.h; cy += chunk) for (let cx = v.x; cx < v.x + v.w; cx += chunk) {
+      const w = Math.min(chunk + 2, v.x + v.w - cx); const h = Math.min(chunk + 2, v.y + v.h - cy);
+      const key = `osl-floor-${n++}`;
+      if (this.textures.exists(key)) this.textures.remove(key);
+      const dt = this.textures.addDynamicTexture(key, Math.ceil(w * rs), Math.ceil(h * rs))!;
+      // A Blitter ignores its own scale, so scale with the texture's camera instead (bobs are at RES px per world px).
+      dt.camera.setOrigin(0, 0).setZoom(rs / RES);
+      dt.draw(tiles, -cx * RES, -cy * RES);
+      for (const sh of shadows) dt.draw(sh.img, (sh.x - cx) * RES, (sh.y - cy) * RES);
+      this.add.image(cx, cy, key).setOrigin(0).setScale(1 / rs).setDepth(-1000);
     }
+    tiles.destroy();
+    for (const sh of shadows) sh.img.destroy();
+    for (const b of [...BACKDROP_BUILDINGS, ...BUILDINGS]) releaseShadow(this, b);
   }
 
+  private addStatic(fp: Footprint, obj: Phaser.GameObjects.Image | Phaser.GameObjects.Graphics, box?: SortItem['box']) {
+    const b = box ?? (() => { const r = (obj as Phaser.GameObjects.Image).getBounds(); return { x: r.x, y: r.y, w: r.width, h: r.height }; })();
+    this.statics.push({ fp, box: b, obj });
+  }
+
+  /** A prop, piece of decor or scenery standing on tile (x, y). Palms and trees sway a little. */
+  private placeArt(kind: ArtKind, x: number, y: number) {
+    const s = gridToScreen(x + 0.5, y + 0.5);
+    const img = addProp(this, kind, s.x, s.y);
+    if (kind === 'palm' || kind === 'tree') {
+      this.tweens.add({ targets: img, angle: { from: -1.2, to: 1.2 }, duration: 2600 + ((x * 7 + y * 13) % 9) * 180, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    }
+    return img;
+  }
+
+  /** A glowing ring on the ground with a bobbing chevron: "something to do here". */
   private drawMarker(it: InteractableDef) {
     const s = gridToScreen(it.x, it.y);
-    const g = this.add.graphics().setPosition(s.x, s.y).setDepth(depthOf(it.x, it.y) - 0.5);
-    g.lineStyle(2, hex('#f2b632'), 0.9); g.strokeEllipse(0, 0, 34, 16);
-    g.fillStyle(hex('#f2b632'), 0.18); g.fillEllipse(0, 0, 34, 16);
-    this.tweens.add({ targets: g, alpha: { from: 0.45, to: 1 }, duration: 800, yoyo: true, repeat: -1 });
-    return g;
+    const ring = this.add.graphics();
+    ring.fillStyle(hex('#f2b632'), 0.16); ring.fillEllipse(0, 0, 40, 19);
+    ring.lineStyle(2, hex('#ffd978'), 0.95); ring.strokeEllipse(0, 0, 34, 16);
+    ring.lineStyle(1, hex('#fff6e5'), 0.6); ring.strokeEllipse(0, 0, 24, 11);
+    const chevron = this.add.graphics();
+    chevron.fillStyle(0x000000, 0.25); chevron.fillTriangle(-6, -1, 7, -1, 0.5, 8);
+    chevron.fillStyle(hex('#ffd978'), 1); chevron.fillTriangle(-6, -3, 6, -3, 0, 5);
+    chevron.lineStyle(1.2, hex('#2a1d1b'), 0.8); chevron.strokeTriangle(-6, -3, 6, -3, 0, 5);
+    // The ring lies on the ground (under everything standing); the chevron is sorted like a thin post on the spot.
+    ring.setPosition(s.x, s.y).setDepth(-990);
+    chevron.setPosition(s.x, s.y - 30);
+    this.addStatic({ x0: it.x, y0: it.y, x1: it.x, y1: it.y }, chevron, { x: s.x - 8, y: s.y - 36, w: 16, h: 16 });
+    this.tweens.add({ targets: ring, alpha: { from: 0.55, to: 1 }, scaleX: { from: 0.94, to: 1.04 }, scaleY: { from: 0.94, to: 1.04 }, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    this.tweens.add({ targets: chevron, y: { from: s.y - 30, to: s.y - 24 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    return ring;
   }
 
   /** Draw the land plots on the ground (replacing the previous set). Purely visual. */
   private setPlots(plots: PlotView[]) {
     this.plotObjects.forEach((o) => o.destroy());
     this.plotObjects = [];
+    this.plotLabels = [];
     this.plots = plots.filter((p) => p.x >= 0 && p.y >= 0 && p.w > 0 && p.d > 0 && p.x + p.w <= MAP_W && p.y + p.d <= MAP_H);
     for (const p of this.plots) {
       const style = PLOT_STYLE[p.status];
@@ -170,16 +255,17 @@ export class StarterAreaScene extends Phaser.Scene {
       g.fillStyle(hex('#fff6e5'), 0.95);
       for (const c of inner) g.fillRect(c.x - 2, c.y - 5, 4, 6);
       const c = gridToScreen(p.x + p.w / 2, p.y + p.d / 2);
-      const label = this.add.text(c.x, c.y, `${p.key.slice(-2)} · ${style.text}`, {
-        fontFamily: 'Trebuchet MS, sans-serif', fontSize: '10px', fontStyle: 'bold', color: '#fff6e5', backgroundColor: style.tag, padding: { x: 4, y: 2 },
-      }).setOrigin(0.5).setDepth(-998).setAlpha(0.92);
+      const label = this.add.text(c.x, c.y, p.key.slice(-2), {
+        fontFamily: '"Trebuchet MS", "Segoe UI", sans-serif', fontSize: '9px', fontStyle: 'bold', color: '#fff6e5', backgroundColor: style.tag, padding: { x: 4, y: 2 }, resolution: 2,
+      }).setOrigin(0.5).setDepth(-998).setAlpha(0.85);
       this.plotObjects.push(g, label);
+      this.plotLabels.push({ plot: p, text: label, near: false });
     }
   }
 
   private placePlayer() {
     const s = gridToScreen(this.pos.x, this.pos.y);
-    this.player.container.setPosition(s.x, s.y).setDepth(depthOf(this.pos.x, this.pos.y));
+    this.player.container.setPosition(s.x, s.y).setDepth(this.characterDepthAt(this.pos.x, this.pos.y, s.x, s.y));
   }
 
   /** Show another player. A second join for the same id replaces the old sprite (never duplicates). */
@@ -203,7 +289,7 @@ export class StarterAreaScene extends Phaser.Scene {
     const bubble = this.bubbles.show(ownerId, kind, content, this.time.now);
     this.bubbleViews.get(ownerId)?.container.destroy(true);
     const text = this.add.text(0, 0, bubble.lines.join('\n'), {
-      fontFamily: 'Trebuchet MS, sans-serif', fontSize: kind === 'emote' ? '22px' : '12px', color: '#111a3d', align: 'center', lineSpacing: 2,
+      fontFamily: '"Trebuchet MS", "Segoe UI", sans-serif', fontSize: kind === 'emote' ? '22px' : '12px', color: '#111a3d', align: 'center', lineSpacing: 2, resolution: 2,
     }).setOrigin(0.5, 1);
     const width = Math.ceil(text.width) + 16;
     const height = Math.ceil(text.height) + 10;
@@ -255,7 +341,7 @@ export class StarterAreaScene extends Phaser.Scene {
 
   private placeRemote(r: RemoteAvatar) {
     const s = gridToScreen(r.motion.x, r.motion.y);
-    r.avatar.container.setPosition(s.x, s.y).setDepth(depthOf(r.motion.x, r.motion.y));
+    r.avatar.container.setPosition(s.x, s.y).setDepth(this.characterDepthAt(r.motion.x, r.motion.y, s.x, s.y));
   }
 
   private interact() {
@@ -293,17 +379,26 @@ export class StarterAreaScene extends Phaser.Scene {
     }
     this.updateBubbles();
     this.updateProximity();
-    this.sortBuildings();
+    this.updatePlotLabels();
     this.checkInteractions();
   }
 
-  /** Buildings draw behind the player unless the player is behind them (north or west). */
-  private sortBuildings() {
-    const pd = depthOf(this.pos.x, this.pos.y);
-    for (const { def, obj } of this.buildings) {
-      const inFront = this.pos.x >= def.x + def.w || this.pos.y >= def.y + def.d;
-      obj.setDepth(inFront ? pd - 2 : pd + 2);
+  /** Plot tags show just the number from afar, and the number with the status when you are close. */
+  private updatePlotLabels() {
+    for (const l of this.plotLabels) {
+      const { plot } = l;
+      const dx = Math.max(plot.x - this.pos.x, 0, this.pos.x - (plot.x + plot.w));
+      const dy = Math.max(plot.y - this.pos.y, 0, this.pos.y - (plot.y + plot.d));
+      const near = Math.hypot(dx, dy) < 2;
+      if (near === l.near) continue;
+      l.near = near;
+      l.text.setText(near ? `${plot.key.slice(-2)} · ${PLOT_STYLE[plot.status].text}` : plot.key.slice(-2)).setAlpha(near ? 1 : 0.85);
     }
+  }
+
+  /** A character at grid (x, y), drawn at screen (sx, sy): slotted between the statics it overlaps. */
+  private characterDepthAt(x: number, y: number, sx: number, sy: number) {
+    return characterDepth(x, y, { x: sx - 14, y: sy - 82, w: 28, h: 84 }, this.statics, this.ranks);
   }
 
   private checkInteractions() {
