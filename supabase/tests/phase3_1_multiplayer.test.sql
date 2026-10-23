@@ -53,8 +53,10 @@ select tests.ok(has_function_privilege('authenticated', 'public.get_player_profi
 select tests.ok((select count(*) = 0 from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r'
                  and relname not in ('players', 'inventories', 'inventory_items',
                                      -- Phase 3.3A economy tables: no client privileges at all (phase3_3a_land.test.sql)
-                                     'land_plots', 'economy_transactions', 'ledger_entries', 'economic_requests')),
-                'no tables in public beyond Phase 1 and the Phase 3.3A economy tables');
+                                     'land_plots', 'economy_transactions', 'ledger_entries', 'economic_requests',
+                                     -- Phase 3.4A jobs and shops (phase3_4a_jobs_shops.test.sql)
+                                     'jobs', 'job_shifts', 'shop_items')),
+                'no tables in public beyond Phase 1 and the Phase 3.3A/3.4A economy tables');
 
 \echo '== 11. Anonymous visitors (anon)'
 set role anon;
@@ -135,8 +137,9 @@ reset role;
 -- call, these fail until someone checks it cannot leak other players' ids.
 select tests.ok((select array_agg(p.proname::text order by p.proname) from pg_proc p
                  where p.pronamespace = 'public'::regnamespace and has_function_privilege('authenticated', p.oid, 'execute'))
-                = array['buy_land_plot', 'create_character', 'get_land_plots', 'get_my_land', 'get_player_profiles', 'mp_my_player_id'],
-                'authenticated can call exactly create_character, get_player_profiles, mp_my_player_id and the 3 Phase 3.3A land functions');
+                = array['abandon_job_shift', 'buy_land_plot', 'buy_shop_item', 'claim_job_shift', 'create_character', 'get_land_plots',
+                        'get_my_jobs', 'get_my_land', 'get_player_profiles', 'get_shop', 'mp_my_player_id', 'start_job_shift'],
+                'authenticated can call exactly the reviewed functions (Phase 1, 3.1, 3.3A land, 3.4A jobs and shops)');
 -- Phase 3.3A: the land functions return no player ids (only character names and owned_by_me).
 select tests.ok(not exists (select 1 from information_schema.parameters p join information_schema.routines r on r.specific_name = p.specific_name
                  where r.routine_schema = 'public' and r.routine_name in ('get_land_plots', 'get_my_land') and p.parameter_mode = 'OUT'

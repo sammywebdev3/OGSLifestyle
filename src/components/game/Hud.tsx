@@ -8,9 +8,9 @@ import { LOCATIONS, SKIN_TONES, OUTFIT_COLORS } from '@/config/game';
 import { CashBadge } from '@/components/player/CashBadge';
 
 /** Top HUD: who you are, your cash, where you are, and quick buttons. */
-export function Hud({ player, mode, locationId, multiplayer, onInventory, onChat, chatUnread, onLand }: {
+export function Hud({ player, mode, locationId, multiplayer, onInventory, onChat, chatUnread, onLand, onWork }: {
   player: Player; mode: PlayerMode; locationId: LocationId; multiplayer: MultiplayerState; onInventory: () => void;
-  onChat: () => void; chatUnread: number; onLand: () => void;
+  onChat: () => void; chatUnread: number; onLand: () => void; onWork: () => void;
 }) {
   const loc = LOCATIONS[locationId];
   return (
@@ -31,6 +31,7 @@ export function Hud({ player, mode, locationId, multiplayer, onInventory, onChat
           💬
           {chatUnread > 0 && <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-laterite-500 px-1 text-[10px] font-black text-white">{chatUnread > 9 ? '9+' : chatUnread}</span>}
         </button>
+        <button type="button" onClick={onWork} className="grid h-10 w-10 place-items-center rounded-full bg-adire-900/80 text-lg shadow-card backdrop-blur hover:bg-adire-700" aria-label="Open work and shops" title="Work &amp; shops (J)">💼</button>
         <button type="button" onClick={onLand} className="grid h-10 w-10 place-items-center rounded-full bg-adire-900/80 text-lg shadow-card backdrop-blur hover:bg-adire-700" aria-label="Open land" title="Land (L)">🗺️</button>
         <button type="button" onClick={onInventory} className="grid h-10 w-10 place-items-center rounded-full bg-adire-900/80 text-lg shadow-card backdrop-blur hover:bg-adire-700" aria-label="Open inventory" title="Inventory (I)">🎒</button>
         <Link href="/apartment" className="grid h-10 w-10 place-items-center rounded-full bg-adire-900/80 text-lg shadow-card backdrop-blur hover:bg-adire-700" aria-label="Back to your apartment" title="Your apartment">🏠</Link>
