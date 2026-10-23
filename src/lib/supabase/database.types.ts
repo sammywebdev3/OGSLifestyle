@@ -29,7 +29,7 @@ export type Database = {
           idempotency_key: string
           kind: string
           player_id: string
-          plot_id: string
+          plot_id: string | null
           transaction_id: string
         }
         Insert: {
@@ -37,7 +37,7 @@ export type Database = {
           idempotency_key: string
           kind: string
           player_id: string
-          plot_id: string
+          plot_id?: string | null
           transaction_id: string
         }
         Update: {
@@ -45,7 +45,7 @@ export type Database = {
           idempotency_key?: string
           kind?: string
           player_id?: string
-          plot_id?: string
+          plot_id?: string | null
           transaction_id?: string
         }
         Relationships: [
@@ -74,27 +74,48 @@ export type Database = {
           amount: number
           created_at: string
           id: string
+          item_key: string | null
+          job_shift_id: string | null
           kind: string
           player_id: string
           plot_id: string | null
+          quantity: number | null
         }
         Insert: {
           amount: number
           created_at?: string
           id?: string
+          item_key?: string | null
+          job_shift_id?: string | null
           kind: string
           player_id: string
           plot_id?: string | null
+          quantity?: number | null
         }
         Update: {
           amount?: number
           created_at?: string
           id?: string
+          item_key?: string | null
+          job_shift_id?: string | null
           kind?: string
           player_id?: string
           plot_id?: string | null
+          quantity?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "economy_transactions_item_key_fkey"
+            columns: ["item_key"]
+            referencedRelation: "shop_items"
+            referencedColumns: ["item_key"]
+          },
+          {
+            foreignKeyName: "economy_transactions_job_shift_id_fkey"
+            columns: ["job_shift_id"]
+            referencedRelation: "job_shifts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "economy_transactions_player_id_fkey"
             columns: ["player_id"]
@@ -158,6 +179,91 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      job_shifts: {
+        Row: {
+          ends_at: string
+          finished_at: string | null
+          id: string
+          job_key: string
+          pay: number
+          player_id: string
+          started_at: string
+          status: string
+          transaction_id: string | null
+        }
+        Insert: {
+          ends_at: string
+          finished_at?: string | null
+          id?: string
+          job_key: string
+          pay: number
+          player_id: string
+          started_at?: string
+          status?: string
+          transaction_id?: string | null
+        }
+        Update: {
+          ends_at?: string
+          finished_at?: string | null
+          id?: string
+          job_key?: string
+          pay?: number
+          player_id?: string
+          started_at?: string
+          status?: string
+          transaction_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_shifts_job_key_fkey"
+            columns: ["job_key"]
+            referencedRelation: "jobs"
+            referencedColumns: ["job_key"]
+          },
+          {
+            foreignKeyName: "job_shifts_player_id_fkey"
+            columns: ["player_id"]
+            referencedRelation: "players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_shifts_transaction_id_fkey"
+            columns: ["transaction_id"]
+            referencedRelation: "economy_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jobs: {
+        Row: {
+          active: boolean
+          description: string
+          duration_seconds: number
+          job_key: string
+          location_id: string
+          pay: number
+          title: string
+        }
+        Insert: {
+          active?: boolean
+          description: string
+          duration_seconds: number
+          job_key: string
+          location_id: string
+          pay: number
+          title: string
+        }
+        Update: {
+          active?: boolean
+          description?: string
+          duration_seconds?: number
+          job_key?: string
+          location_id?: string
+          pay?: number
+          title?: string
+        }
+        Relationships: []
       }
       land_plots: {
         Row: {
@@ -284,14 +390,59 @@ export type Database = {
         }
         Relationships: []
       }
+      shop_items: {
+        Row: {
+          active: boolean
+          item_key: string
+          max_per_purchase: number
+          name: string
+          price: number
+          shop_key: string
+        }
+        Insert: {
+          active?: boolean
+          item_key: string
+          max_per_purchase?: number
+          name: string
+          price: number
+          shop_key: string
+        }
+        Update: {
+          active?: boolean
+          item_key?: string
+          max_per_purchase?: number
+          name?: string
+          price?: number
+          shop_key?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      abandon_job_shift: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       buy_land_plot: {
         Args: {
           p_plot_key: string
+          p_idempotency_key: string
+        }
+        Returns: Json
+      }
+      buy_shop_item: {
+        Args: {
+          p_item_key: string
+          p_quantity: number
+          p_idempotency_key: string
+        }
+        Returns: Json
+      }
+      claim_job_shift: {
+        Args: {
           p_idempotency_key: string
         }
         Returns: Json
@@ -326,6 +477,10 @@ export type Database = {
           owned_by_me: boolean
         }[]
       }
+      get_my_jobs: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       get_my_land: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -346,9 +501,21 @@ export type Database = {
           avatar: Json
         }[]
       }
+      get_shop: {
+        Args: {
+          p_shop_key: string
+        }
+        Returns: Json
+      }
       mp_my_player_id: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      start_job_shift: {
+        Args: {
+          p_job_key: string
+        }
+        Returns: Json
       }
     }
     Enums: {

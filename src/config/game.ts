@@ -51,6 +51,11 @@ export const ITEMS: Record<ItemKey, ItemDefinition> = {
   'apartment-key': { key: 'apartment-key', name: 'Apartment key', icon: '🔑', description: 'Opens your self-contain in Kuto.' },
   'water-sachet': { key: 'water-sachet', name: 'Pure water', icon: '💧', description: 'A cold sachet for the heat.' },
   'adire-scarf': { key: 'adire-scarf', name: 'Adire scarf', icon: '🧣', description: 'Hand-dyed in Itoku.' },
+  // Sold at the Kuto shops (Phase 3.4A). Names and prices for sale come from the database; these are display only.
+  'puff-puff': { key: 'puff-puff', name: 'Puff-puff', icon: '🍩', description: 'Five hot pieces in a paper bag.' },
+  'amala-plate': { key: 'amala-plate', name: 'Amala plate', icon: '🍲', description: 'Amala, ewedu and gbegiri from the buka.' },
+  zobo: { key: 'zobo', name: 'Zobo', icon: '🥤', description: 'Cold hibiscus drink with ginger.' },
+  bread: { key: 'bread', name: 'Agege bread', icon: '🍞', description: 'Soft and sweet, still warm.' },
 };
 
 /** Items every new character starts with (mirrors the database function). */
