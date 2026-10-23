@@ -323,9 +323,11 @@ supabase/migrations/        SQL schema, RLS policies, create_character(), land r
 
 - **The map:** a Kuto street corner with Kuto Court (your apartment), Iya Basira Buka, Blessed POS, Mama T Stores,
   an okada park and a notice board.
-- **Rendering:** everything is drawn in code as placeholder art. The map data (`src/game/world/starterArea.ts`) is
-  separate from the drawing code (`src/game/render/`), so either can be replaced with real tilesets and sprites
-  without changing the other.
+- **Rendering:** all art is painted from code once at load (`src/game/art/`) into textures, then drawn by Phaser
+  as textured quads, so there are no image files to download or license. The map data
+  (`src/game/world/starterArea.ts`) stays separate from the art. Draw order uses an isometric depth sort
+  (`src/game/iso/depthSort.ts`), and the canvas renders at the device's pixel ratio (capped for performance).
+  Art direction, asset inventory and measurements: [`docs/visual-pass.md`](docs/visual-pass.md).
 
 ## Security model (and what is *not* done yet)
 
