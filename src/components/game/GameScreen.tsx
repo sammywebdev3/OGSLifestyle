@@ -20,6 +20,8 @@ import { useLand } from '@/features/land/useLand';
 import { PLOT_TARGET_PREFIX, plotLabel } from '@/features/land/plots';
 import { LandDialog } from './LandDialog';
 import { LandPanel } from './LandPanel';
+import { WorkShopPanel } from './WorkShopPanel';
+import { useEconomy } from '@/features/economy/useEconomy';
 
 // Client-only: never server-render the Phaser host.
 const GameCanvas = dynamic(() => import('./GameCanvas'), { ssr: false });
@@ -57,8 +59,12 @@ function World({ player, inventory, mode }: PlayerSession) {
   const setTyping = useCallback((typing: boolean) => { typingRef.current = typing; bus.ui.emit('input:typing', typing); }, [bus]);
   const { sendEmote } = multiplayer;
   // Land: what the server reports. The balance shown changes only from a server response.
-  const { applyServerCash } = usePlayer();
+  const { applyServerCash, applyServerItem } = usePlayer();
   const land = useLand({ mode, onCash: applyServerCash });
+  // Jobs and shops: pay and purchases change cash and the bag only from the server's answer.
+  const economy = useEconomy({ mode, onCash: applyServerCash, onItem: applyServerItem });
+  const [workOpen, setWorkOpen] = useState(false);
+  const moneyPending = economy.claim.kind === 'pending' || economy.purchase.kind === 'pending';
   const [landKey, setLandKey] = useState<string | null>(null);
   const [landOpen, setLandOpen] = useState(false);
   const landPlot = landKey ? land.plots.find((p) => p.key === landKey) ?? null : null;
@@ -93,7 +99,7 @@ function World({ player, inventory, mode }: PlayerSession) {
   useEffect(() => { bus.ui.emit('land:plots', plotViews); }, [bus, plotViews]);
 
   // Pause the world while a panel is open.
-  const panelOpen = !!dialog || bagOpen || landOpen || !!landKey;
+  const panelOpen = !!dialog || bagOpen || landOpen || !!landKey || workOpen;
   useEffect(() => { bus.ui.emit('world:pause', panelOpen); }, [bus, panelOpen]);
 
   // "I" toggles the inventory; Escape closes panels.
@@ -103,17 +109,19 @@ function World({ player, inventory, mode }: PlayerSession) {
         setDialog(null); setBagOpen(false);
         // A land dialog waiting for the server stays open until the answer arrives.
         if (land.attempt.kind !== 'pending') { closeLand(); setLandOpen(false); }
+        if (!moneyPending) setWorkOpen(false);
       }
       if (typingRef.current || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return; // typing in chat
       if ((e.key === 'i' || e.key === 'I') && !dialog && !landKey) setBagOpen((o) => !o);
-      if ((e.key === 'l' || e.key === 'L') && !dialog && !landKey && !bagOpen) setLandOpen((o) => !o);
+      if ((e.key === 'l' || e.key === 'L') && !dialog && !landKey && !bagOpen && !workOpen) setLandOpen((o) => !o);
+      if ((e.key === 'j' || e.key === 'J') && !dialog && !landKey && !bagOpen && !landOpen && !moneyPending) setWorkOpen((o) => !o);
       // 1–4: emotes, only while another player is within reach.
       const emote = EMOTE_IDS[Number(e.key) - 1];
       if (emote && nearbyPlayer && !panelOpen) sendEmote(emote);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [dialog, bagOpen, landKey, panelOpen, nearbyPlayer, sendEmote, land.attempt.kind, closeLand]);
+  }, [dialog, bagOpen, landKey, landOpen, workOpen, moneyPending, panelOpen, nearbyPlayer, sendEmote, land.attempt.kind, closeLand]);
 
   // Mark everything read whenever the panel is open.
   useEffect(() => {
@@ -124,15 +132,16 @@ function World({ player, inventory, mode }: PlayerSession) {
     <div className="fixed inset-0 overflow-hidden bg-adire-900">
       <GameCanvas avatar={avatar} characterName={player.characterName} bus={bus} />
       <Hud player={player} mode={mode} locationId={locationId} multiplayer={multiplayer} onInventory={() => setBagOpen(true)}
-        onChat={() => setChatOpen((o) => !o)} chatUnread={unread} onLand={() => setLandOpen(true)} />
+        onChat={() => setChatOpen((o) => !o)} chatUnread={unread} onLand={() => setLandOpen(true)} onWork={() => setWorkOpen(true)} />
       {chatOpen && <ChatPanel entries={multiplayer.chat} status={multiplayer.status} onSend={multiplayer.sendChat} onTyping={setTyping} onClose={() => setChatOpen(false)} />}
       {nearbyPlayer && multiplayer.status === 'online' && !panelOpen && <EmoteBar name={nearbyPlayer.name} onEmote={(emote) => { sendEmote(emote); }} />}
       {nearby && !panelOpen && <InteractionPrompt target={nearby} onInteract={() => bus.ui.emit('input:interact')} />}
       <TouchControls bus={bus} />
-      <p className="pointer-events-none absolute bottom-3 right-4 hidden text-xs text-cream/60 [@media(pointer:fine)]:block">Move: WASD / arrows · Interact: E · Bag: I · Land: L</p>
+      <p className="pointer-events-none absolute bottom-3 right-4 hidden text-xs text-cream/60 [@media(pointer:fine)]:block">Move: WASD / arrows · Interact: E · Bag: I · Land: L · Work &amp; shops: J</p>
       {dialog && <InteractionDialog target={dialog} onClose={() => setDialog(null)} onEnterApartment={() => router.push('/apartment')} />}
       {bagOpen && <InventoryPanel inventory={inventory} onClose={() => setBagOpen(false)} />}
       {landOpen && <LandPanel land={land} onOpen={(key) => { setLandOpen(false); setLandKey(key); }} onClose={() => setLandOpen(false)} />}
+      {workOpen && <WorkShopPanel economy={economy} cash={player.cash} onClose={() => { if (!moneyPending) { economy.clearMessages(); setWorkOpen(false); } }} />}
       {landPlot && (
         <LandDialog plot={landPlot} mine={land.mine.find((m) => m.key === landPlot.key)} cash={player.cash} mode={mode} attempt={land.attempt}
           onBuy={() => void land.buy(landPlot.key)} onClose={closeLand} />

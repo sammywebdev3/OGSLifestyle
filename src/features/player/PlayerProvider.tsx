@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { Inventory } from '@/types/inventory';
+import type { Inventory, ItemKey } from '@/types/inventory';
 import type { CreateCharacterInput, Player } from '@/types/player';
 import { getBrowserSupabase } from '@/lib/supabase/client';
 import { isSupabaseConfigured } from '@/lib/supabase/env';
@@ -27,6 +27,7 @@ interface PlayerContextValue extends PlayerState {
   signOut: () => Promise<void>;
   /** Show the balance a server response just reported (e.g. after buying land). Never a client-side calculation. */
   applyServerCash: (cash: number) => void;
+  applyServerItem: (key: ItemKey, owned: number) => void;
 }
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -97,7 +98,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setState((s) => (s.mode === 'online' && s.player ? { ...s, player: { ...s.player, cash } } : s));
   }, []);
 
-  const value = useMemo(() => ({ ...state, onlineAvailable, refresh, createCharacter, signOut, applyServerCash }), [state, onlineAvailable, refresh, createCharacter, signOut, applyServerCash]);
+  // How many of an item the server says you own now (after a shop purchase). Only the server's count is shown.
+  const applyServerItem = useCallback((key: ItemKey, owned: number) => {
+    if (!Number.isSafeInteger(owned) || owned < 0) return;
+    setState((s) => {
+      if (s.mode !== 'online' || !s.inventory) return s;
+      const others = s.inventory.items.filter((i) => i.key !== key);
+      const items = owned > 0 ? [...others, { key, quantity: owned }] : others;
+      return { ...s, inventory: { ...s.inventory, items } };
+    });
+  }, []);
+
+  const value = useMemo(() => ({ ...state, onlineAvailable, refresh, createCharacter, signOut, applyServerCash, applyServerItem }),
+    [state, onlineAvailable, refresh, createCharacter, signOut, applyServerCash, applyServerItem]);
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }
 

@@ -17,11 +17,13 @@ test('well-formed same-origin requests are accepted with exactly their fields', 
 
 test('cross-site requests and non-JSON bodies are refused before the body is read', () => {
   const evil = h({ 'content-type': 'application/json', origin: 'https://evil.example', host: 'ogslifestyle.vercel.app' });
-  for (const v of [validateStartJobBody, validateClaimBody, validateAbandonBody, validateShopBuyBody]) {
-    assert.equal(status(parseJsonRequest(evil, '{}', v)), 403);
-    assert.equal(status(parseJsonRequest(h({ 'content-type': 'text/plain', host: 'ogslifestyle.vercel.app' }), '{}', v)), 415);
-    assert.equal(status(parseJsonRequest(h({ 'content-type': 'application/x-www-form-urlencoded', host: 'ogslifestyle.vercel.app' }), '{}', v)), 415);
-  }
+  const all = (headers: ReturnType<typeof h>) => [
+    parseJsonRequest(headers, '{}', validateStartJobBody), parseJsonRequest(headers, '{}', validateClaimBody),
+    parseJsonRequest(headers, '{}', validateAbandonBody), parseJsonRequest(headers, '{}', validateShopBuyBody),
+  ].map(status);
+  assert.deepEqual(all(evil), [403, 403, 403, 403]);
+  assert.deepEqual(all(h({ 'content-type': 'text/plain', host: 'ogslifestyle.vercel.app' })), [415, 415, 415, 415]);
+  assert.deepEqual(all(h({ 'content-type': 'application/x-www-form-urlencoded', host: 'ogslifestyle.vercel.app' })), [415, 415, 415, 415]);
 });
 
 test('malformed and oversized bodies are refused', () => {
