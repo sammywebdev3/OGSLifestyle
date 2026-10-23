@@ -257,6 +257,25 @@ Each plot has one owner, kept in the database, so ownership survives reloads.
     cross-player isolation;
   - database errors (500/503) and deletion through the Auth admin API.
 
+## Jobs and shops (Phase 3.4A)
+
+Players work timed shifts for pay (₦1,500 to ₦9,000) and buy food, drinks and an adire scarf at Iya Basira Buka and
+Mama T Stores. Open it with the 💼 button or **J**.
+
+- **Server authority:**
+  - The browser sends only a job key, a request id, or an item, a quantity and a request id.
+  - Pay, shift length and prices come from the database.
+  - Wages and purchases are balanced, idempotent ledger transactions, using `game:wages` and `game:shop-sales`.
+  - Only one shift can run at a time, a shift is paid at most once, and there are at most 20 shifts a day.
+- **Code:** `src/features/economy/`, `src/server/services/economyService.ts`, `src/app/api/jobs/`, `src/app/api/shop/`,
+  and `src/components/game/WorkShopPanel.tsx`.
+- **Migration:** `supabase/migrations/20261023000000_phase3_4a_jobs_shops.sql`, with its rollback script in
+  `supabase/rollback/`. The rollback refuses once any shift or job/shop money exists.
+- **Verify:** `supabase/verify/phase3_4a_economy_check.sql` replaces the 3.3A land check once this is applied.
+- **Not live:** until the migration is applied to the live project (with approval), the panel says "Jobs and shops
+  are not open on this server yet".
+- **Plan, deployment steps, rollback and tests:** [`docs/phase-3.4a-jobs-shops-plan.md`](docs/phase-3.4a-jobs-shops-plan.md).
+
 ## Deploying to Vercel
 
 1. Import the GitHub repo in Vercel. `vercel.json` sets the framework to Next.js. This matters for a Vercel project
