@@ -2,6 +2,8 @@
 export const AUTH_ERROR_MESSAGES = {
   'link-expired': 'That link has expired or was already used. Sign in, or create your account again to get a new confirmation email.',
   callback: "We couldn't confirm that sign-in link. Please try signing in again.",
+  'reset-link-expired': 'That password-reset link has expired or was already used. Request a new one below.',
+  'reset-callback': "We couldn't open that password-reset link. Request a new one below.",
 } as const;
 
 export type AuthErrorCode = keyof typeof AUTH_ERROR_MESSAGES;

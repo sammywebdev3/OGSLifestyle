@@ -19,7 +19,7 @@ PG_IMAGE="${SUPABASE_PG_IMAGE:-supabase/postgres:15.8.1.085}"
 AUTH_IMAGE="${SUPABASE_AUTH_IMAGE:-supabase/gotrue:v2.177.0}"
 REST_IMAGE="${POSTGREST_IMAGE:-postgrest/postgrest:v12.2.12}"
 PG_PORT="${TEST_API_PG_PORT:-54379}"; AUTH_PORT="${TEST_API_AUTH_PORT:-59979}"; REST_PORT="${TEST_API_REST_PORT:-53079}"
-GW_PORT="${TEST_API_GATEWAY_PORT:-54381}"; APP_PORT="${TEST_API_APP_PORT:-3101}"
+GW_PORT="${TEST_API_GATEWAY_PORT:-54381}"; APP_PORT="${TEST_API_APP_PORT:-3101}"; SMTP_PORT="${TEST_API_SMTP_PORT:-2526}"
 RUN="osl-api-$$"; NET="$RUN-net"; DB="$RUN-db"; AUTH="$RUN-auth"; REST="$RUN-rest"
 PASS="local-test-only"
 TEST_JWT_SECRET="$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")"
@@ -46,7 +46,7 @@ wait_for() { # $1 = description, $2.. = command that succeeds when ready
 }
 
 # A leftover server on one of these ports would answer instead of the fresh build: refuse to start.
-for port in "$PG_PORT" "$AUTH_PORT" "$REST_PORT" "$GW_PORT" "$APP_PORT"; do
+for port in "$PG_PORT" "$AUTH_PORT" "$REST_PORT" "$GW_PORT" "$APP_PORT" "$SMTP_PORT"; do
   if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then echo "FAIL: port $port is already in use; stop whatever is listening there first" >&2; exit 2; fi
 done
 
@@ -57,10 +57,17 @@ export PGHOST=127.0.0.1 PGPORT="$PG_PORT" PGUSER=postgres PGPASSWORD="$PASS" PGD
 wait_for "Postgres" bash -c "docker logs $DB 2>&1 | grep -q 'PostgreSQL init process complete' && psql -Atqc 'select 1'"
 # Local-only passwords for the service roles, so GoTrue and PostgREST can log in.
 psql -q -U supabase_admin -c "alter role supabase_auth_admin with password '$PASS'; alter role authenticator with password '$PASS';"
-docker run -d --name "$AUTH" --network "$NET" -p "127.0.0.1:$AUTH_PORT:9999" \
+# Auth e-mails (password reset) go to a test-only SMTP sink on the host; tests read them from $MAIL_DIR.
+MAIL_DIR="$WORK/mail"
+setsid node "$ROOT/scripts/api-test/smtp-sink.mjs" "$SMTP_PORT" "$MAIL_DIR" >"$WORK/smtp.log" 2>&1 &
+PIDS+=($!)
+docker run -d --name "$AUTH" --network "$NET" -p "127.0.0.1:$AUTH_PORT:9999" --add-host=host.docker.internal:host-gateway \
+  -e GOTRUE_SMTP_HOST=host.docker.internal -e GOTRUE_SMTP_PORT="$SMTP_PORT" -e GOTRUE_SMTP_ADMIN_EMAIL=noreply@ogs.test \
+  -e GOTRUE_SMTP_SENDER_NAME="OGS test" -e GOTRUE_SMTP_MAX_FREQUENCY=1s \
   -e GOTRUE_API_HOST=0.0.0.0 -e PORT=9999 -e API_EXTERNAL_URL="http://127.0.0.1:$GW_PORT/auth/v1" \
   -e GOTRUE_DB_DRIVER=postgres -e GOTRUE_DB_DATABASE_URL="postgres://supabase_auth_admin:$PASS@$DB:5432/postgres" \
   -e GOTRUE_SITE_URL="http://127.0.0.1:$APP_PORT" -e GOTRUE_URI_ALLOW_LIST="http://127.0.0.1:$APP_PORT/**" \
+  -e GOTRUE_MAILER_URLPATHS_RECOVERY=/auth/v1/verify \
   -e GOTRUE_JWT_SECRET="$TEST_JWT_SECRET" -e GOTRUE_JWT_EXP=3600 -e GOTRUE_JWT_AUD=authenticated \
   -e GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated -e GOTRUE_JWT_ADMIN_ROLES=service_role \
   -e GOTRUE_EXTERNAL_EMAIL_ENABLED=true -e GOTRUE_MAILER_AUTOCONFIRM=true -e GOTRUE_DISABLE_SIGNUP=false \
@@ -103,6 +110,6 @@ curl -sf --noproxy '*' "http://127.0.0.1:$APP_PORT/" | grep -q "$BUILD_ID" || { 
 
 echo "▶ running API tests (scripts/api-test/*.test.mjs)"
 APP_URL="http://127.0.0.1:$APP_PORT" SUPABASE_URL="http://127.0.0.1:$GW_PORT" ANON_KEY="$ANON_KEY" SERVICE_KEY="$SERVICE_KEY" \
-  REST_CONTAINER="$REST" REST_HEALTH="http://127.0.0.1:$REST_PORT/" NO_PROXY='*' no_proxy='*' \
+  REST_CONTAINER="$REST" REST_HEALTH="http://127.0.0.1:$REST_PORT/" MAIL_DIR="$MAIL_DIR" NO_PROXY='*' no_proxy='*' \
   node --test --test-concurrency=1 "$ROOT"/scripts/api-test/*.test.mjs || { echo "--- app log (tail)"; tail -30 "$WORK/app.log"; exit 1; }
 echo "✔ all API tests passed"

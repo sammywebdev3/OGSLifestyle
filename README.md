@@ -95,6 +95,14 @@ These are manual steps in **your** Supabase project. Nothing in this repo touche
     - optionally, preview deployments: `https://<project>-*-<your-vercel-team-slug>.vercel.app/**` (copy the
       team slug from any preview URL)
 - **Sessions:** the app uses `@supabase/ssr` cookies (PKCE flow), so no extra setting is needed.
+- **Password reset:** "Forgot password?" on `/login` opens `/forgot-password`, which sends Supabase's **Reset
+  Password** email.
+  - The link returns through `/auth/callback?next=/reset-password` and is covered by the same Redirect URLs above.
+  - It works once, and only in the browser that asked for it (PKCE).
+  - On `/reset-password` the player chooses a new password.
+  - Expired or reused links land back on `/forgot-password` with a clear message.
+  - The answer is the same whether or not an e-mail has an account.
+  - Reset e-mails count towards the same SMTP sending limit as confirmations.
 - **Email sending (SMTP):** Supabase's built-in email sender is for testing only. It has a very low sending limit
   (a handful of emails per hour), and while it is in use it may only deliver to your project team's addresses. With
   **Confirm email** on, sign-ups beyond that limit get no confirmation email. **Before opening registration to the
