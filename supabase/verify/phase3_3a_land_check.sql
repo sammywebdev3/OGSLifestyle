@@ -1,3 +1,7 @@
+-- SUPERSEDED once Phase 3.4A (20261023000000_phase3_4a_jobs_shops.sql) is applied: it then reports
+-- differences by design. Use supabase/verify/phase3_4a_economy_check.sql on a 3.4A database. This file
+-- stays for databases still at Phase 3.3A (production until 3.4A is approved and applied).
+--
 -- READ-ONLY check that a database matches migration 20261020000000_phase3_3a_land.sql
 -- (land registry, ledger, idempotent purchases), and that the Phase 1 / 3.1 objects it
 -- must not touch are unchanged.
