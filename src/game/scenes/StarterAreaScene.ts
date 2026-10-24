@@ -14,6 +14,9 @@ import { baseZoom } from '../render/viewport';
 import { PLOT_TARGET_PREFIX } from '@/features/land/plots';
 import { fillPoly, isoPoint, strokePoly } from '../render/isoDraw';
 import { PlayerAvatar, NAME_TAG_LIFT } from '../entities/PlayerAvatar';
+import { LabAvatar } from '../characterLab/LabAvatar';
+import { DemoWalker } from '../characterLab/demoWalker';
+import { LAB_CHARACTERS, LAB_FRAME, labAtlasUrl, labCharacterFor, labTextureKey, type LabCharacter } from '../characterLab/prototype';
 import { RES } from '../art/canvasIso';
 import { GROUND_KEY, GROUND_OFFSET, installGround } from '../art/groundArt';
 import { OUTSKIRTS, groundFrame, insideMap } from '../art/groundLayout';
@@ -24,13 +27,20 @@ export interface SceneOptions {
   avatar: AvatarSelection;
   characterName: string;
   bus: GameBus;
+  /**
+   * Character lab (prototype, off unless enabled for a test build): '3d' draws everyone with the pre-rendered
+   * 3D characters, 'painted' keeps the current characters; both add the same scripted walkers, for comparison.
+   */
+  characterLab?: '3d' | 'painted';
 }
+
+type Avatar = PlayerAvatar | LabAvatar;
 
 const SPEED = 3.4; // tiles per second
 const RADIUS = 0.28; // player collision radius in tiles
 
 /** Another player's character: drawn from multiplayer updates, never controlled locally. */
-interface RemoteAvatar { name: string; avatar: PlayerAvatar; motion: Smoother; facing: LocalPlayerState['facing']; moving: boolean }
+interface RemoteAvatar { name: string; avatar: Avatar; motion: Smoother; facing: LocalPlayerState['facing']; moving: boolean }
 
 /** Speech/emote bubble drawn above a character ("self" = the local player). */
 interface BubbleView { container: Phaser.GameObjects.Container; width: number; height: number }
@@ -49,7 +59,8 @@ const PLOT_STYLE: Record<PlotView['status'], { fill: string; line: string; tag: 
 /** Kuto street corner: floor, buildings, props, a controllable player and interaction spots. */
 export class StarterAreaScene extends Phaser.Scene {
   private opts: SceneOptions;
-  private player!: PlayerAvatar;
+  private player!: Avatar;
+  private demoWalkers = new Map<string, DemoWalker>();
   private pos = { ...SPAWN };
   private isBlocked = isBlockedFn(buildBlockedSet());
   private keys!: Record<'up' | 'down' | 'left' | 'right' | 'w' | 'a' | 's' | 'd' | 'e' | 'space' | 'enter', Phaser.Input.Keyboard.Key>;
@@ -79,6 +90,18 @@ export class StarterAreaScene extends Phaser.Scene {
     this.opts = opts;
   }
 
+  preload() {
+    if (this.opts.characterLab !== '3d') return;
+    const frame = { frameWidth: LAB_FRAME.w * LAB_FRAME.res, frameHeight: LAB_FRAME.h * LAB_FRAME.res };
+    for (const c of LAB_CHARACTERS) this.load.spritesheet(labTextureKey(c), labAtlasUrl(c), frame);
+  }
+
+  /** The painted character, or in the character lab the pre-rendered 3D one (local and remote alike). */
+  private makeAvatar(avatar: AvatarSelection, name: string, opts: { remote?: boolean; lab?: LabCharacter } = {}): Avatar {
+    if (this.opts.characterLab !== '3d') return new PlayerAvatar(this, avatar, name, opts);
+    return new LabAvatar(this, opts.lab ?? labCharacterFor(avatar), name, opts);
+  }
+
   create() {
     // All art is painted once into textures here (no image files to download), then drawn as quads.
     const corners = [gridToScreen(0, 0), gridToScreen(MAP_W, 0), gridToScreen(0, MAP_H), gridToScreen(MAP_W, MAP_H)];
@@ -100,8 +123,9 @@ export class StarterAreaScene extends Phaser.Scene {
     this.ranks = staticRanks(this.statics);
     this.statics.forEach((st, i) => st.obj.setDepth(this.ranks[i]!));
 
-    this.player = new PlayerAvatar(this, this.opts.avatar, this.opts.characterName);
+    this.player = this.makeAvatar(this.opts.avatar, this.opts.characterName);
     this.placePlayer();
+    if (this.opts.characterLab) this.addDemoWalkers();
 
     // Camera: follow the player within the map (plus a margin of outskirts).
     this.cameras.main.setBounds(this.view.x, this.view.y, this.view.w, this.view.h);
@@ -263,6 +287,24 @@ export class StarterAreaScene extends Phaser.Scene {
     }
   }
 
+  /** Character lab: the other prototype characters stroll around the spawn point, through the remote-player path. */
+  private addDemoWalkers() {
+    const names: Record<LabCharacter, string> = { tunde: 'Tunde', femi: 'Femi', amaka: 'Amaka', zainab: 'Zainab' };
+    // The closest painted look for each, so the 'painted' comparison shows the same cast.
+    const painted: Record<LabCharacter, AvatarSelection> = {
+      tunde: { body: 'masc', skin: 'deep', headwear: 'none', outfit: 'palm' },
+      femi: { body: 'masc', skin: 'brown', headwear: 'fila', outfit: 'adire' },
+      amaka: { body: 'femme', skin: 'deep', headwear: 'braids', outfit: 'laterite' },
+      zainab: { body: 'femme', skin: 'warm', headwear: 'none', outfit: 'ink' },
+    };
+    LAB_CHARACTERS.forEach((c, i) => {
+      const x = SPAWN.x + [1.2, -1.0, 0.6, -0.4][i]!; const y = SPAWN.y + [0.8, 1.1, -1.2, 2.0][i]!;
+      const id = `lab-${c}`;
+      this.demoWalkers.set(id, new DemoWalker(x, y, { x: SPAWN.x, y: SPAWN.y }));
+      this.addRemote({ id, name: names[c], avatar: painted[c], x, y, facing: 'right', moving: false });
+    });
+  }
+
   private placePlayer() {
     const s = gridToScreen(this.pos.x, this.pos.y);
     this.player.container.setPosition(s.x, s.y).setDepth(this.characterDepthAt(this.pos.x, this.pos.y, s.x, s.y));
@@ -271,7 +313,7 @@ export class StarterAreaScene extends Phaser.Scene {
   /** Show another player. A second join for the same id replaces the old sprite (never duplicates). */
   private addRemote(r: RemotePlayerView) {
     this.removeRemote(r.id);
-    const avatar = new PlayerAvatar(this, r.avatar, r.name, { remote: true });
+    const avatar = this.makeAvatar(r.avatar, r.name, { remote: true, lab: LAB_CHARACTERS.find((c) => r.id === `lab-${c}`) });
     avatar.face(r.facing === 'left' ? -1 : 1);
     this.remotes.set(r.id, { name: r.name, avatar, motion: new Smoother(r.x, r.y), facing: r.facing, moving: r.moving });
     this.placeRemote(this.remotes.get(r.id)!);
@@ -361,21 +403,39 @@ export class StarterAreaScene extends Phaser.Scene {
     }
     const dir = screenDirToGrid(dx, dy);
     const moving = dir.x !== 0 || dir.y !== 0;
+    const before = gridToScreen(this.pos.x, this.pos.y);
     if (moving) {
       this.pos = moveWithCollision(this.pos, { x: dir.x * SPEED * dt, y: dir.y * SPEED * dt }, RADIUS, this.isBlocked);
       this.placePlayer();
     }
-    this.player.animate(dt, moving, dx);
+    const after = gridToScreen(this.pos.x, this.pos.y);
+    // Facing comes from the actual screen movement (sliding along a wall faces along the wall).
+    this.player.animate(dt, moving, after.x - before.x || dx, after.y - before.y);
     if (dx !== 0) this.facing = dx < 0 ? 'left' : 'right';
     // Multiplayer reads this every frame and decides itself when to send.
     this.opts.bus.world.emit('player:state', { x: this.pos.x, y: this.pos.y, facing: this.facing, moving });
 
     // Other players: glide towards their last reported position. Their updates never touch this.pos.
+    for (const [id, w] of this.demoWalkers) {
+      const r = this.remotes.get(id);
+      if (!r) continue;
+      const p = w.step(dt, this.isBlocked);
+      const sdx = gridToScreen(p.x, p.y).x - gridToScreen(r.motion.x, r.motion.y).x;
+      if (Math.abs(sdx) > 0.01) r.facing = sdx < 0 ? 'left' : 'right'; // what the protocol would carry
+      r.motion.setTarget(p.x, p.y); r.moving = p.moving;
+    }
     for (const r of this.remotes.values()) {
+      const from = gridToScreen(r.motion.x, r.motion.y);
       r.motion.step(dt);
       this.placeRemote(r);
-      r.avatar.animate(dt, r.moving, r.facing === 'left' ? -1 : 1);
-      if (!r.moving) r.avatar.face(r.facing === 'left' ? -1 : 1);
+      const to = gridToScreen(r.motion.x, r.motion.y);
+      if (r.avatar instanceof LabAvatar) {
+        // The protocol only says left or right; the 3D characters face their actual movement on screen.
+        r.avatar.animate(dt, r.moving, to.x - from.x, to.y - from.y);
+      } else {
+        r.avatar.animate(dt, r.moving, r.facing === 'left' ? -1 : 1);
+        if (!r.moving) r.avatar.face(r.facing === 'left' ? -1 : 1);
+      }
     }
     this.updateBubbles();
     this.updateProximity();

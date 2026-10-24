@@ -11,7 +11,7 @@ export interface GameHandle {
   destroy(): void;
 }
 
-export async function createGame(parent: HTMLElement, opts: { avatar: AvatarSelection; characterName: string; bus: GameBus }): Promise<GameHandle> {
+export async function createGame(parent: HTMLElement, opts: { avatar: AvatarSelection; characterName: string; bus: GameBus; characterLab?: '3d' | 'painted'; exposeForTests?: boolean }): Promise<GameHandle> {
   if (typeof window === 'undefined') throw new Error('createGame() must run in the browser');
   const [Phaser, { StarterAreaScene }] = await Promise.all([import('phaser'), import('./scenes/StarterAreaScene')]);
   const nav = navigator as Navigator & { deviceMemory?: number };
@@ -30,6 +30,8 @@ export async function createGame(parent: HTMLElement, opts: { avatar: AvatarSele
     callbacks: { preBoot: (g) => { g.registry.set('renderScale', rs); } },
     scene: new StarterAreaScene(opts),
   });
+  // Character lab test builds only: lets the measurement harness read frame timings.
+  if (opts.exposeForTests) (window as unknown as { __oslLab?: unknown }).__oslLab = game;
   const observer = new ResizeObserver(() => {
     const { w, h } = cssSize();
     if (Math.floor(w * rs) !== game.scale.width || Math.floor(h * rs) !== game.scale.height) game.scale.resize(w * rs, h * rs);
