@@ -70,7 +70,11 @@ def skin_material(name, tone, lip, brow):
     bsdf.inputs['Subsurface Radius'].default_value = (1.0, 0.4, 0.25)
     bsdf.inputs['Subsurface Scale'].default_value = 0.012
     rough = n.new('ShaderNodeMapRange'); rough.inputs['To Min'].default_value = 0.5; rough.inputs['To Max'].default_value = 0.64
-    l.new(noise.outputs['Fac'], rough.inputs['Value']); l.new(rough.outputs['Result'], bsdf.inputs['Roughness'])
+    l.new(noise.outputs['Fac'], rough.inputs['Value'])
+    # Lips are smoother (a soft natural gloss).
+    lip_rough = n.new('ShaderNodeMix'); lip_rough.data_type = 'FLOAT'
+    l.new(sep.outputs['Red'], lip_rough.inputs[0]); l.new(rough.outputs['Result'], lip_rough.inputs[2]); lip_rough.inputs[3].default_value = 0.3
+    l.new(lip_rough.outputs[0], bsdf.inputs['Roughness'])
     bsdf.inputs['Specular IOR Level'].default_value = 0.32
     pores = n.new('ShaderNodeTexNoise'); pores.inputs['Scale'].default_value = 1400
     bump = n.new('ShaderNodeBump'); bump.inputs['Strength'].default_value = 0.06; bump.inputs['Distance'].default_value = 0.0008
@@ -83,10 +87,13 @@ def eye_material(texture):
     nt, n, l = _nodes(mat)
     bsdf = n['Principled BSDF']
     tex = n.new('ShaderNodeTexImage'); tex.image = bpy.data.images.load(texture)
-    l.new(tex.outputs['Color'], bsdf.inputs['Base Color'])
-    bsdf.inputs['Roughness'].default_value = 0.06
-    bsdf.inputs['Coat Weight'].default_value = 1.0
-    bsdf.inputs['Coat Roughness'].default_value = 0.02
+    # Slightly darker than the texture (a bright white sclera reads as staring), with a soft wet coat.
+    dim = n.new('ShaderNodeMix'); dim.data_type = 'RGBA'; dim.blend_type = 'MULTIPLY'
+    dim.inputs[0].default_value = 1.0; dim.inputs[7].default_value = (0.78, 0.74, 0.7, 1)
+    l.new(tex.outputs['Color'], dim.inputs[6]); l.new(dim.outputs[2], bsdf.inputs['Base Color'])
+    bsdf.inputs['Roughness'].default_value = 0.2
+    bsdf.inputs['Coat Weight'].default_value = 0.6
+    bsdf.inputs['Coat Roughness'].default_value = 0.08
     return mat
 
 

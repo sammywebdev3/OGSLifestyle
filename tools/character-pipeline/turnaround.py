@@ -22,15 +22,21 @@ bpy.context.view_layer.update()
 zs = [v.co.z for v in h['body'].data.vertices]
 top, bottom = max(zs) + 0.12, min(zs) - 0.02
 mid = Vector((0, 0, (top + bottom) / 2))
-studio.setup_render(samples, (520, 860))
+scale = float(os.environ.get('RS', '1'))
+views = os.environ.get('VIEWS', 'front,three,side,back,head').split(',')
+studio.setup_render(samples, (int(520 * scale), int(860 * scale)))
 studio.studio(mid + Vector((0, 0, 0.4)))
 cam = studio.camera()
 for view, yaw in (('front', 0), ('three', 35), ('side', 90), ('back', 180)):
+    if view not in views:
+        continue
     a = math.radians(yaw)
     studio.look_at(cam, mid + Vector((math.sin(a) * 8, -math.cos(a) * 8, 0)), mid, ortho=(top - bottom) * 1.04)
     studio.render(os.path.join(OUT, f'{name}-{view}.png'))
+if 'head' not in views:
+    sys.exit(0)
 c, *_ = looks.head_frame(h)
-bpy.context.scene.render.resolution_x = bpy.context.scene.render.resolution_y = 520
+bpy.context.scene.render.resolution_x = bpy.context.scene.render.resolution_y = int(520 * scale)
 a = math.radians(28)
 studio.look_at(cam, c + Vector((math.sin(a) * 1.3, -math.cos(a) * 1.3, 0.03)), c + Vector((0, 0, -0.02)), lens=85)
 studio.render(os.path.join(OUT, f'{name}-head.png'))

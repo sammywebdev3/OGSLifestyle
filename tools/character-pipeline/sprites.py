@@ -24,7 +24,7 @@ import looks  # noqa: E402
 import studio  # noqa: E402
 
 # Frame layout in world pixels (the game draws at 1/RES); feet at (AX, AY).
-FW, FH, AX, AY = 72, 80, 26, 72
+FW, FH, AX, AY = 84, 88, 32, 78
 PX_PER_M = 33.0           # ~1.75 m person -> ~56 px tall on screen, same as the painted sprites
 ELEV = math.radians(30)   # 2:1 isometric
 RES = 2                   # texels per world pixel in the atlas
