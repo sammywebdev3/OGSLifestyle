@@ -65,7 +65,7 @@ def pack(sizes, max_w=MAX_W, gap=2):
         pos[i] = (x, y)
         x += w + gap
         shelf = max(shelf, h)
-        width = max(width, x)
+        width = max(width, x - gap)
     return pos, (width, y + shelf)
 
 

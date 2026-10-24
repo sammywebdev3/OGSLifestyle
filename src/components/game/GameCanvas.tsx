@@ -15,6 +15,13 @@ function characterLab(): '3d' | 'painted' | undefined {
   return lab === 'characters' ? '3d' : lab === 'painted' ? 'painted' : undefined;
 }
 
+/** In a lab build: ?labmix=1 adds the layered looks to the cast, ?labn=N repeats the cast up to N walkers. */
+function labCast(): { mix?: boolean; count?: number } | undefined {
+  if (!LAB_BUILD) return undefined;
+  const q = new URLSearchParams(window.location.search);
+  return { mix: q.get('labmix') === '1', count: Number(q.get('labn')) || undefined };
+}
+
 /**
  * Hosts the Phaser canvas. Phaser is imported inside useEffect, so it is never
  * evaluated during server rendering. Cleans up the game on unmount.
@@ -28,7 +35,7 @@ export default function GameCanvas({ avatar, characterName, bus }: { avatar: Ava
     let handle: { destroy(): void } | null = null;
     const offReady = bus.world.on('ready', () => !cancelled && setState('ready'));
     import('@/game/createGame')
-      .then(({ createGame }) => (hostRef.current && !cancelled ? createGame(hostRef.current, { avatar, characterName, bus, characterLab: characterLab(), exposeForTests: LAB_BUILD }) : null))
+      .then(({ createGame }) => (hostRef.current && !cancelled ? createGame(hostRef.current, { avatar, characterName, bus, characterLab: characterLab(), labCast: labCast(), exposeForTests: LAB_BUILD }) : null))
       .then((h) => {
         if (cancelled) h?.destroy();
         else handle = h;

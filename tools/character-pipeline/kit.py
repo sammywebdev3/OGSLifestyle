@@ -97,28 +97,38 @@ def _sole(pts, floor, height, out=0.008, n=48):
 
 
 def sneakers(h, B, upper='#f4f3ef', sole='#e6e1d3', accent='#1d8a4e', line='#8d939a'):
-    """Trainers: a padded upper fitted around the foot, a thick cupsole, a coloured heel tab and lace panel."""
+    """
+    Trainers: a padded upper fitted around the foot with a proper heel collar, a thick cupsole with a contrasting
+    sidewall line, a coloured heel tab and side stripe, and a striped lace panel over the instep.
+    """
     mats = [fabrics.leather('sneaker-sole', sole, 0.7), fabrics.leather('sneaker-upper', upper, 0.42),
-            fabrics.leather('sneaker-accent', accent, 0.4), fabrics.cloth('sneaker-laces', '#e9e7e1', 0.8, weave='knit', weave_scale=300),
+            fabrics.leather('sneaker-accent', accent, 0.4),
+            fabrics.cloth('sneaker-laces', '#efede8', 0.8, weave='knit', weave_scale=300, print_fn=fabrics.stripes('#9a9a96', 90, 'Y', 0.7)),
             fabrics.leather('sneaker-line', line, 0.6)]
     out = []
     for side in ('l', 'r'):
         sel, pts, heel, toe = _foot(B, side)
         L = np.linalg.norm(toe - heel)
-        rings = T.limb_rings(B, sel, [heel, toe], lambda u, th: 0.0075 + 0.003 * (u / L) + 0 * th, start=-0.012, end=L + 0.014, n=40, step=0.008, slab=0.008)
-        ob = T.fuse(f'sneaker-{side}', [T.tube(rings), _sole(pts, B.floor, 0.026)], voxel=0.0035, smooth=4)
+        rings = T.limb_rings(B, sel, [heel, toe], lambda u, th: 0.008 + 0.003 * (u / L) + 0 * th, start=-0.012, end=L + 0.014, n=40, step=0.008, slab=0.008)
+        ob = T.fuse(f'sneaker-{side}', [T.tube(rings), _sole(pts, B.floor, 0.028)], voxel=0.0035, smooth=4)
         fx = np.median(pts[:, 0])
-        T.cut(ob, lambda P, fx=fx: np.where((np.abs(P[:, 0] - fx) < 0.09) & (P[:, 1] > heel[1] - 0.16), P[:, 2] - (B.ankle + 0.006 - 0.05 * np.clip((heel[1] - 0.05 - P[:, 1]) / 0.06, 0, 1)), -1))
+
+        def collar(y):
+            # High around the heel, sloping down to the tongue at the front of the opening.
+            return B.ankle + 0.02 - 0.03 * np.clip((heel[1] - 0.03 - y) / 0.07, 0, 1)
+        T.cut(ob, lambda P, fx=fx: np.where((np.abs(P[:, 0] - fx) < 0.09) & (P[:, 1] > heel[1] - 0.14), P[:, 2] - collar(P[:, 1]), -1))
         for m in mats:
             ob.data.materials.append(m)
         for p in ob.data.polygons:
             c = p.center
-            if c.z < B.floor + 0.024:
-                p.material_index = 4 if c.z > B.floor + 0.018 else 0
-            elif c.y > heel[1] - 0.025 and c.z > B.floor + 0.04:
-                p.material_index = 2
+            if c.z < B.floor + 0.026:
+                p.material_index = 4 if c.z > B.floor + 0.02 else 0
+            elif c.y > heel[1] - 0.03 and c.z > B.floor + 0.04:
+                p.material_index = 2                                   # heel tab
+            elif abs(c.x - fx) > 0.026 and B.floor + 0.032 < c.z < B.floor + 0.05 and toe[1] + 0.05 < c.y < heel[1] - 0.04:
+                p.material_index = 2                                   # side stripe
             elif abs(c.x - fx) < 0.022 and c.z > B.floor + 0.05 and c.y < heel[1] - 0.07:
-                p.material_index = 3
+                p.material_index = 3                                   # laces
             else:
                 p.material_index = 1
         T.set_rest(ob)

@@ -1,6 +1,9 @@
 # Character prototype: stylized 3D humans (art direction B)
 
-Status: **prototype for review, iteration 2** (after the art-direction board). It runs only in a test build made with
+Status: **prototype for review, iteration 2** (after the art-direction board). **Milestone 1** of the approved
+pre-rendered sprite approach (consistent anchoring, layered body/outfit/hair, on-demand atlas loading, memory
+selection) is reported in [`character-sprites-test-report.md`](character-sprites-test-report.md); its atlases have
+replaced the iteration 2 ones in `public/prototype-characters/`. It runs only in a test build made with
 `NEXT_PUBLIC_CHARACTER_LAB=1`, opened at `/play?lab=characters`. Production builds never set that variable, so nothing
 changes for players. Nothing here touches the database, migrations, the economy, or the multiplayer protocol.
 
@@ -315,8 +318,9 @@ SAMPLES=16 python sprites.py -- femi    # 96 isometric frames (about 4-19 min pe
 python3 atlas.py $OUT_DIR/femi-frames femi ../../public/prototype-characters   # femi-hd/sd .webp + .json
 ```
 
-Building one character takes 1–3 minutes (garment simulation included). The four atlases plus JSON in
-`public/prototype-characters/` total about 3 MB.
+Building one character takes 1–3 minutes (garment simulation included). Milestone 1 adds layered renders
+(`LAYERS=body,outfit,hair`) and `check_anchors.py`; see the test report. The nine atlases plus JSON in
+`public/prototype-characters/` total about 4.9 MB.
 
 The game test:
 

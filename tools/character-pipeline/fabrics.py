@@ -152,6 +152,75 @@ def jersey_print(name, lines, w=512, h=512, color='#ffffff', arch=None):
     return path
 
 
+def _stitched(d, pts, stitch, edge, closed=False, width=3):
+    """A seam: a darker fold line with a row of contrast stitches beside it."""
+    seq = pts + ([pts[0]] if closed else [])
+    d.line(seq, fill=edge, width=width + 2)
+    for a, b in zip(seq[:-1], seq[1:]):
+        L = math.dist(a, b)
+        for k in range(int(L // 9)):
+            t0, t1 = k * 9 / L, min(1, (k * 9 + 5) / L)
+            off = 6
+            nx, ny = (b[1] - a[1]) / L * off, -(b[0] - a[0]) / L * off
+            d.line([(a[0] + (b[0] - a[0]) * t0 + nx, a[1] + (b[1] - a[1]) * t0 + ny),
+                    (a[0] + (b[0] - a[0]) * t1 + nx, a[1] + (b[1] - a[1]) * t1 + ny)], fill=stitch, width=2)
+
+
+def jeans_front(name='jeans-front.png', w=512, h=256, stitch='#d29a3c', edge='#1d2f57'):
+    """Front of jeans (decal over x -0.18..0.18 m, a 0.15 m band below the waist): curved pocket openings, the fly,
+    rivets and a copper button."""
+    path = _path(name)
+    if os.path.exists(path):
+        return path
+    im = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    st, ed = _hex(stitch) + (255,), _hex(edge) + (230,)
+    for sgn in (-1, 1):
+        cx = w / 2 + sgn * 150
+        arc = [(cx - sgn * 60 + sgn * 60 * (1 - math.cos(t)), 30 + 90 * math.sin(t)) for t in [i * math.pi / 2 / 10 for i in range(11)]]
+        _stitched(d, arc, st, ed)
+        r = 5
+        d.ellipse([arc[0][0] - r, arc[0][1] - r + 6, arc[0][0] + r, arc[0][1] + r + 6], fill=_hex('#b07a3a') + (255,))
+    _stitched(d, [(w / 2 + 6, 40), (w / 2 + 6, 170), (w / 2 + 34, 200), (w / 2 + 34, 40)], st, ed)
+    d.ellipse([w / 2 - 12, 10, w / 2 + 12, 34], fill=_hex('#b9864a') + (255,), outline=_hex('#7a5528') + (255,), width=3)
+    im.save(path)
+    return path
+
+
+def jeans_back(name='jeans-back.png', w=512, h=256, stitch='#d29a3c', edge='#1d2f57'):
+    """Back of jeans (decal over x -0.18..0.18 m around the seat): the yoke and two patch pockets."""
+    path = _path(name)
+    if os.path.exists(path):
+        return path
+    im = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    st, ed = _hex(stitch) + (255,), _hex(edge) + (230,)
+    _stitched(d, [(0, 30), (w / 2, 70), (w, 30)], st, ed)
+    for sgn in (-1, 1):
+        cx = w / 2 + sgn * 120
+        pocket = [(cx - 70, 80), (cx + 70, 80), (cx + 62, 200), (cx, 236), (cx - 62, 200)]
+        _stitched(d, pocket, st, ed, closed=True)
+        _stitched(d, [(cx - 40, 140), (cx, 160), (cx + 40, 140)], st, ed)
+    _stitched(d, [(w / 2, 70), (w / 2, h)], st, ed)
+    im.save(path)
+    return path
+
+
+def knee_seams(name='knee-seams.png', w=512, h=128, stitch='#5a5d62', edge='#26282c'):
+    """Front of cargo trousers around the knees: articulated knee panels (two stitched seams on each leg)."""
+    path = _path(name)
+    if os.path.exists(path):
+        return path
+    im = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    for sgn in (-1, 1):
+        cx = w / 2 + sgn * 128
+        for y in (30, 98):
+            _stitched(d, [(cx - 70, y), (cx, y + 10), (cx + 70, y)], _hex(stitch) + (255,), _hex(edge) + (220,))
+    im.save(path)
+    return path
+
+
 # ----------------------------------------------------------------------------- shader building blocks
 
 
@@ -269,6 +338,17 @@ def tonal(dark, scale=14.0, mix=0.35):
         l.new(rest, w.inputs['Vector'])
         stripe = _math(n, l, 'GREATER_THAN', w.outputs['Fac'], 0.6)
         return _mix(n, l, _math(n, l, 'MULTIPLY', stripe, mix), base, srgb(dark))
+    return fn
+
+
+def stripes(dark, scale=80.0, axis='Y', mix=0.6):
+    """print_fn: even bands across one axis (laces, ribbing)."""
+    def fn(n, l, rest, base):
+        w = n.new('ShaderNodeTexWave'); w.wave_type = 'BANDS'; w.bands_direction = axis
+        w.inputs['Scale'].default_value = scale; w.inputs['Distortion'].default_value = 0.0
+        l.new(rest, w.inputs['Vector'])
+        band = _math(n, l, 'GREATER_THAN', w.outputs['Fac'], 0.55)
+        return _mix(n, l, _math(n, l, 'MULTIPLY', band, mix), base, srgb(dark))
     return fn
 
 

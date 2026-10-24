@@ -12,7 +12,7 @@ export interface GameHandle {
   destroy(): void;
 }
 
-export async function createGame(parent: HTMLElement, opts: { avatar: AvatarSelection; characterName: string; bus: GameBus; characterLab?: '3d' | 'painted'; exposeForTests?: boolean }): Promise<GameHandle> {
+export async function createGame(parent: HTMLElement, opts: { avatar: AvatarSelection; characterName: string; bus: GameBus; characterLab?: '3d' | 'painted'; labCast?: { mix?: boolean; count?: number }; exposeForTests?: boolean }): Promise<GameHandle> {
   if (typeof window === 'undefined') throw new Error('createGame() must run in the browser');
   const [Phaser, { StarterAreaScene }] = await Promise.all([import('phaser'), import('./scenes/StarterAreaScene')]);
   const nav = navigator as Navigator & { deviceMemory?: number };

@@ -54,3 +54,32 @@ test('character lab: demo walkers never walk through blocked tiles', () => {
   }
   assert.ok(moved > 1000);
 });
+
+test('character lab: looks stack body, outfit and hair layers, and reuse them across combinations', async () => {
+  const { LAB_LOOKS, labAtlasUrls } = await import('./prototype.ts');
+  for (const [id, look] of Object.entries(LAB_LOOKS)) {
+    assert.ok(look.atlases.length === 1 || look.atlases.length === 3, id);
+    if (look.atlases.length === 3) {
+      const [body, outfit, hair] = look.atlases;
+      assert.match(body!, /^body-/); assert.match(outfit!, /^outfit-/); assert.match(hair!, /^hair-/);
+    }
+  }
+  // Four combinations of one body, two outfits and two hairstyles need five atlases, not four full ones.
+  const layered = Object.values(LAB_LOOKS).filter((l) => l.atlases.length === 3);
+  assert.equal(layered.length, 4);
+  assert.equal(new Set(layered.flatMap((l) => l.atlases)).size, 5);
+  assert.deepEqual(labAtlasUrls('outfit-femi.tunde', 'sd'), {
+    image: '/prototype-characters/outfit-femi.tunde-sd.webp', json: '/prototype-characters/outfit-femi.tunde-sd.json',
+  });
+});
+
+test('character lab: the demo cast has unique ids, mixes on request and repeats for stress tests', async () => {
+  const { demoCast } = await import('./demoCast.ts');
+  assert.deepEqual(demoCast().map((m) => m.look), ['tunde', 'femi', 'amaka', 'zainab']);
+  assert.equal(demoCast({ mix: true }).length, 7);
+  const big = demoCast({ count: 20 });
+  assert.equal(big.length, 20);
+  assert.equal(new Set(big.map((m) => m.id)).size, 20);
+  assert.equal(big[4]!.name, 'Tunde 2');
+  assert.equal(demoCast({ count: 1000 }).length, 60); // capped
+});

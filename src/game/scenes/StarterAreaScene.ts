@@ -16,7 +16,9 @@ import { fillPoly, isoPoint, strokePoly } from '../render/isoDraw';
 import { PlayerAvatar, NAME_TAG_LIFT } from '../entities/PlayerAvatar';
 import { LabAvatar } from '../characterLab/LabAvatar';
 import { DemoWalker } from '../characterLab/demoWalker';
-import { LAB_CHARACTERS, labAtlasUrls, labCharacterFor, labTextureKey, type LabCharacter, type LabQuality } from '../characterLab/prototype';
+import { LAB_LOOKS, labCharacterFor, type LabLookId, type LabQuality } from '../characterLab/prototype';
+import { LabAtlasLoader } from '../characterLab/atlasLoader';
+import { demoCast } from '../characterLab/demoCast';
 import { RES } from '../art/canvasIso';
 import { GROUND_KEY, GROUND_OFFSET, installGround } from '../art/groundArt';
 import { OUTSKIRTS, groundFrame, insideMap } from '../art/groundLayout';
@@ -34,6 +36,8 @@ export interface SceneOptions {
   characterLab?: '3d' | 'painted';
   /** Character lab atlas quality ('sd' for low-memory phones). */
   labQuality?: LabQuality;
+  /** Character lab cast: add the layered mixes, and/or repeat the cast up to `count` walkers (stress tests). */
+  labCast?: { mix?: boolean; count?: number };
 }
 
 type Avatar = PlayerAvatar | LabAvatar;
@@ -63,6 +67,8 @@ export class StarterAreaScene extends Phaser.Scene {
   private opts: SceneOptions;
   private player!: Avatar;
   private demoWalkers = new Map<string, DemoWalker>();
+  private labLoader: LabAtlasLoader | null = null;
+  private labLooks = new Map<string, LabLookId>();
   private pos = { ...SPAWN };
   private isBlocked = isBlockedFn(buildBlockedSet());
   private keys!: Record<'up' | 'down' | 'left' | 'right' | 'w' | 'a' | 's' | 'd' | 'e' | 'space' | 'enter', Phaser.Input.Keyboard.Key>;
@@ -94,16 +100,16 @@ export class StarterAreaScene extends Phaser.Scene {
 
   preload() {
     if (this.opts.characterLab !== '3d') return;
-    for (const c of LAB_CHARACTERS) {
-      const { image, json } = labAtlasUrls(c, this.opts.labQuality ?? 'hd');
-      this.load.atlas(labTextureKey(c), image, json);
-    }
+    // Only the local player's character loads before the world appears; everyone else's loads when they show up.
+    this.labLoader = new LabAtlasLoader(this, this.opts.labQuality ?? 'hd');
+    this.labLoader.request(LAB_LOOKS[labCharacterFor(this.opts.avatar)].atlases);
   }
 
   /** The painted character, or in the character lab the pre-rendered 3D one (local and remote alike). */
-  private makeAvatar(avatar: AvatarSelection, name: string, opts: { remote?: boolean; lab?: LabCharacter } = {}): Avatar {
-    if (this.opts.characterLab !== '3d') return new PlayerAvatar(this, avatar, name, opts);
-    return new LabAvatar(this, opts.lab ?? labCharacterFor(avatar), name, { ...opts, quality: this.opts.labQuality });
+  private makeAvatar(avatar: AvatarSelection, name: string, opts: { remote?: boolean; look?: LabLookId } = {}): Avatar {
+    if (this.opts.characterLab !== '3d' || !this.labLoader) return new PlayerAvatar(this, avatar, name, opts);
+    const look = LAB_LOOKS[opts.look ?? labCharacterFor(avatar)];
+    return new LabAvatar(this, look, name, { remote: opts.remote, quality: this.opts.labQuality, loader: this.labLoader });
   }
 
   create() {
@@ -291,21 +297,23 @@ export class StarterAreaScene extends Phaser.Scene {
     }
   }
 
-  /** Character lab: the other prototype characters stroll around the spawn point, through the remote-player path. */
+  /**
+   * Character lab: the cast strolls around the spawn point, through the remote-player path (never sent anywhere).
+   * In the 'painted' comparison the same cast wears the closest painted look.
+   */
   private addDemoWalkers() {
-    const names: Record<LabCharacter, string> = { tunde: 'Tunde', femi: 'Femi', amaka: 'Amaka', zainab: 'Zainab' };
-    // The closest painted look for each, so the 'painted' comparison shows the same cast.
-    const painted: Record<LabCharacter, AvatarSelection> = {
-      tunde: { body: 'masc', skin: 'deep', headwear: 'none', outfit: 'palm' },
-      femi: { body: 'masc', skin: 'brown', headwear: 'fila', outfit: 'adire' },
-      amaka: { body: 'femme', skin: 'deep', headwear: 'braids', outfit: 'laterite' },
-      zainab: { body: 'femme', skin: 'warm', headwear: 'none', outfit: 'ink' },
-    };
-    LAB_CHARACTERS.forEach((c, i) => {
-      const x = SPAWN.x + [1.2, -1.0, 0.6, -0.4][i]!; const y = SPAWN.y + [0.8, 1.1, -1.2, 2.0][i]!;
-      const id = `lab-${c}`;
-      this.demoWalkers.set(id, new DemoWalker(x, y, { x: SPAWN.x, y: SPAWN.y }));
-      this.addRemote({ id, name: names[c], avatar: painted[c], x, y, facing: 'right', moving: false });
+    const cast = demoCast(this.opts.labCast);
+    const offsets: [number, number][] = [[1.2, 0.8], [-1.0, 1.1], [0.6, -1.2], [-0.4, 2.0], [1.8, -0.4], [-1.6, -0.6], [0.2, 1.6]];
+    cast.forEach((m, i) => {
+      let [ox, oy] = offsets[i % offsets.length]!;
+      const ring = 1 + Math.floor(i / offsets.length) * 0.35;
+      ox *= ring; oy *= ring;
+      // Start on a free tile near the planned spot.
+      for (let t = 0; t < 12 && this.isBlocked(Math.floor(SPAWN.x + ox), Math.floor(SPAWN.y + oy)); t++) { ox *= 0.8; oy *= 0.8; }
+      const x = SPAWN.x + ox; const y = SPAWN.y + oy;
+      this.labLooks.set(m.id, m.look);
+      this.demoWalkers.set(m.id, new DemoWalker(x, y, { x: SPAWN.x, y: SPAWN.y }));
+      this.addRemote({ id: m.id, name: m.name, avatar: m.painted, x, y, facing: 'right', moving: false });
     });
   }
 
@@ -317,7 +325,7 @@ export class StarterAreaScene extends Phaser.Scene {
   /** Show another player. A second join for the same id replaces the old sprite (never duplicates). */
   private addRemote(r: RemotePlayerView) {
     this.removeRemote(r.id);
-    const avatar = this.makeAvatar(r.avatar, r.name, { remote: true, lab: LAB_CHARACTERS.find((c) => r.id === `lab-${c}`) });
+    const avatar = this.makeAvatar(r.avatar, r.name, { remote: true, look: this.labLooks.get(r.id) });
     avatar.face(r.facing === 'left' ? -1 : 1);
     this.remotes.set(r.id, { name: r.name, avatar, motion: new Smoother(r.x, r.y), facing: r.facing, moving: r.moving });
     this.placeRemote(this.remotes.get(r.id)!);

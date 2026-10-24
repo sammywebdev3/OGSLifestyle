@@ -1,7 +1,8 @@
 """
 The four prototype outfits, after the art-direction board:
   Tunde  - Nigeria football jersey, cargo joggers, white trainers, backpack
-  Femi   - royal-blue senator kaftan with embroidery, matching trousers, fila, leather slides, watch
+  Femi   - royal-blue senator kaftan with embroidery, matching trousers, leather slides, watch (the fila is headwear:
+           see characters.HAIRSTYLES)
   Amaka  - fitted ankara dress with straps, strappy sandals, handbag, necklace, gold hoops
   Zainab - white crop tank, high-waist wide-leg jeans, white trainers, handbag, big gold hoops
 
@@ -131,12 +132,15 @@ def trousers(B, h, name, waist, hem, ease_hip, ease_hem, material, expand=0.012)
     return T.Garment(ob, material, lambda B2: _waist_pin(waist - (B.waist - B2.waist)))
 
 
-def trouser_details(ob, B, h, waist, hem, material, cuff=None):
-    # The waistband wraps over the cut edge, so no gap shows between the trousers and the body.
-    loop = T.nearest_loop(T.boundary_loops(ob), np.array([0, 0, waist]))
-    wb = T.ribbon(f'{ob.name}-waistband', ob, loop + np.array([0, 0, 0.006]), (0, 0, -1), 0.044, material, outward=0.0025, thickness=0.005)
-    T.skin(wb, B, h['armature'], smooth=4)
-    out = [wb]
+def trouser_details(ob, B, h, waist, hem, material, cuff=None, waistband=True):
+    """Waistband (skipped under a top that covers it: it would show through) and optional ankle cuffs."""
+    out = []
+    if waistband:
+        # The waistband wraps over the cut edge, so no gap shows between the trousers and the body.
+        loop = T.nearest_loop(T.boundary_loops(ob), np.array([0, 0, waist]))
+        wb = T.ribbon(f'{ob.name}-waistband', ob, loop + np.array([0, 0, 0.006]), (0, 0, -1), 0.044, material, outward=0.0025, thickness=0.005)
+        T.skin(wb, B, h['armature'], smooth=4)
+        out.append(wb)
     if cuff:
         for side in ('l', 'r'):
             x = B.j[f'calf_{side}'][1][0]
@@ -147,7 +151,9 @@ def trouser_details(ob, B, h, waist, hem, material, cuff=None):
 # ----------------------------------------------------------------------------- Tunde
 
 def tunde_garments(h, B):
-    cargo = fabrics.cloth('cargo', '#3a3d42', 0.85, sheen=0.3, weave='twill', weave_scale=900, bump=0.15)
+    cy = _centre(B, B.hip)[1]
+    cargo = fabrics.cloth('cargo', '#3a3d42', 0.85, sheen=0.3, weave='twill', weave_scale=900, bump=0.15,
+                          print_fn=fabrics.decals((fabrics.knee_seams(), 'front', 0.0, B.knee, 0.4, 0.1, cy)))
     pants = trousers(B, h, 'cargo', B.hip + 0.03, B.ankle + 0.015, 0.024, 0.006, cargo, expand=0.02)
     c = _centre(B, B.chest)
     hem = B.hip - 0.06
@@ -172,7 +178,7 @@ def tunde_details(h, B, g):
     cargo_mat = cargo.data.materials[0]
     out = [_band(jersey, B, h, (0, 0, B.neck), (0, 0, -1), 0.016, white, outward=0.002)]
     out += _cuffs(jersey, B, h, 0.5, 0.018, white, outward=0.002)
-    out += trouser_details(cargo, B, h, B.hip + 0.03, B.ankle + 0.015, cargo_mat, cuff=(0.03, cargo_mat))
+    out += trouser_details(cargo, B, h, B.hip + 0.03, B.ankle + 0.015, cargo_mat, cuff=(0.03, cargo_mat), waistband=False)
     tree = T.surface_tree(cargo)
     for side, sgn in (('l', 1), ('r', -1)):
         a, b = B.j[f'thigh_{side}']
@@ -193,7 +199,7 @@ def tunde_details(h, B, g):
 
 def femi_garments(h, B):
     blue = fabrics.cloth('senator', '#1c3592', 0.72, sheen=0.4, weave='twill', weave_scale=1100, bump=0.1)
-    pants = trousers(B, h, 'sokoto', B.hip + 0.02, B.floor + 0.045, 0.016, 0.016, blue, expand=0.0)
+    pants = trousers(B, h, 'sokoto', B.hip + 0.02, B.ankle - 0.015, 0.016, 0.018, blue, expand=0.0)
     c = _centre(B, B.chest)
     hem = B.knee - 0.07
     torso = T.vertical_rings(B, B.mask(T.TORSO | T.LEG), hem - 0.03, B.neck + 0.05, lambda z, th: 0.024 + 0 * th, centre=c, hang=0.993,
@@ -222,9 +228,9 @@ def femi_details(h, B, g):
         pl = T.ribbon('placket', kaftan, np.array(pts) - np.array([0.013, 0, 0]), (1, 0, 0), 0.026, emb, outward=0.0018, closed=False, uv_repeat=0.04)
         T.skin(pl, B, h['armature']); out.append(pl)
     out += _cuffs(kaftan, B, h, 1.97, 0.03, emb, outward=0.0018, uv_repeat=0.04)
-    out += trouser_details(sokoto, B, h, B.hip + 0.02, B.floor + 0.045, sokoto.data.materials[0])
+    out += trouser_details(sokoto, B, h, B.hip + 0.02, B.ankle - 0.015, sokoto.data.materials[0], waistband=False)
     out += kit.sandals(h, B, '#2a1a10', style='slide')
-    return out, [kit.fila(h, B)] + kit.watch(h, B, 'l')
+    return out, kit.watch(h, B, 'l')
 
 
 # ----------------------------------------------------------------------------- Amaka
@@ -270,7 +276,7 @@ def amaka_details(h, B, g):
         st = T.ribbon(f'strap-{sgn}', h['body'], path, (1, 0, 0), 0.012, smat, outward=0.002, closed=False)
         T.skin(st, B, h['armature'], smooth=2); out.append(st)
     out += kit.sandals(h, B, '#c99a5b', style='strappy', strap_color='#d9a441')
-    return out, kit.handbag(h, B, 'l', '#16161a') + kit.necklace(h, B)
+    return out, kit.handbag(h, B, 'l', '#16161a') + kit.necklace(h, B) + kit.earrings(h, h['targets'], radius=0.009)
 
 
 # ----------------------------------------------------------------------------- Zainab
@@ -287,19 +293,22 @@ def zainab_garments(h, B):
     T.drape(ob, h['body'], _shoulder_pin(B), frames=12, expand=0.004)
     T.skin(ob, B, h['armature'])
     white = fabrics.cloth('tank', '#f3f1ec', 0.8, sheen=0.3, weave='knit', weave_scale=1500, bump=0.12)
+    cy = _centre(B, B.hip)[1]
     jeans = fabrics.cloth('jeans-light', '#2f5590', 0.85, sheen=0.1, weave='twill', weave_scale=1000, bump=0.25,
-                          print_fn=fabrics.denim('#2c4f88', '#6f90c4', 4.0))
+                          print_fn=fabrics.decals((fabrics.jeans_front(), 'front', 0.0, B.waist - 0.055, 0.36, 0.18, cy),
+                                                  (fabrics.jeans_back(), 'back', 0.0, B.hip - 0.04, 0.36, 0.18, cy),
+                                                  under=fabrics.denim('#2c4f88', '#6f90c4', 4.0)))
 
     def straps(B2):
         return lambda P: np.clip((P[:, 2] - (B2.chest + 0.03)) / 0.05, 0, 1)
-    return [trousers(B, h, 'jeans', B.waist + 0.02, B.floor + 0.02, 0.012, 0.055, jeans, expand=0.008),
+    return [trousers(B, h, 'jeans', B.waist + 0.02, B.floor + 0.03, 0.012, 0.055, jeans, expand=0.0),
             T.Garment(ob, white, straps, thickness=0.002)]
 
 
 def zainab_details(h, B, g):
-    out = trouser_details(g['jeans'], B, h, B.waist + 0.02, B.floor + 0.02, g['jeans'].data.materials[0])
+    out = trouser_details(g['jeans'], B, h, B.waist + 0.02, B.floor + 0.03, g['jeans'].data.materials[0])
     out += kit.sneakers(h, B, accent='#f4f3ef', line='#d6d2c8')
-    return out, kit.handbag(h, B, 'l', '#121214', size=(0.22, 0.07, 0.15))
+    return out, kit.handbag(h, B, 'l', '#121214', size=(0.22, 0.07, 0.15)) + kit.earrings(h, h['targets'], radius=0.016)
 
 
 LOOKS = {

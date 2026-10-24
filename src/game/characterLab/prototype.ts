@@ -20,10 +20,31 @@ const COLUMN_NAMES = [...Array.from({ length: LAB_WALK }, (_, i) => `walk${i}`),
 export const LAB_QUALITY = { hd: 2, sd: 1.25 } as const;
 export type LabQuality = keyof typeof LAB_QUALITY;
 
-export const labTextureKey = (c: LabCharacter) => `lab-char-${c}`;
-export const labAtlasUrls = (c: LabCharacter, q: LabQuality) => ({
-  image: `/prototype-characters/${c}-${q}.webp`,
-  json: `/prototype-characters/${c}-${q}.json`,
+/**
+ * A look is the atlases drawn for one character, bottom to top. A baked character is one atlas; a layered one stacks
+ * body (skin, face, beard), outfit (clothes, shoes, accessories, ground shadow) and hair (hairstyle or headwear).
+ * Layers share frame names and anchors, so any outfit or hairstyle rendered on a body can be combined with it
+ * without rendering the combination (see tools/character-pipeline/sprites.py LAYERS).
+ */
+export interface LabLook { atlases: readonly string[] }
+
+export const LAB_LOOKS = {
+  tunde: { atlases: ['tunde'] },
+  femi: { atlases: ['femi'] },
+  amaka: { atlases: ['amaka'] },
+  zainab: { atlases: ['zainab'] },
+  // Layered: Tunde's body with either outfit and either hairstyle (5 atlases for 4 combinations).
+  'tunde-layered': { atlases: ['body-tunde', 'outfit-tunde.tunde', 'hair-fade.tunde'] },
+  'tunde-fila': { atlases: ['body-tunde', 'outfit-tunde.tunde', 'hair-fila.tunde'] },
+  'tunde-senator': { atlases: ['body-tunde', 'outfit-femi.tunde', 'hair-fade.tunde'] },
+  'tunde-senator-fila': { atlases: ['body-tunde', 'outfit-femi.tunde', 'hair-fila.tunde'] },
+} as const satisfies Record<string, LabLook>;
+export type LabLookId = keyof typeof LAB_LOOKS;
+
+export const labTextureKey = (atlas: string) => `lab-${atlas}`;
+export const labAtlasUrls = (atlas: string, q: LabQuality) => ({
+  image: `/prototype-characters/${encodeURIComponent(atlas)}-${q}.webp`,
+  json: `/prototype-characters/${encodeURIComponent(atlas)}-${q}.json`,
 });
 
 /** 'sd' atlases on devices reporting 4 GB of memory or less (navigator.deviceMemory), unless overridden. */

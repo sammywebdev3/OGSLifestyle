@@ -58,8 +58,8 @@ def braided_bun(h, targets_dir, n_braids=40, color='#1c110c'):
     looks.set_scalp_mask(h, [dens(i, v.co) for i, v in enumerate(body.data.vertices)])
     _, zmin, zmax, _ = looks.head_frame(h)
     # Cornrow base between the braids (the scalp is never bare between them).
-    looks.shell_from_body(h, 'cornrows', sel, lambda i, co: 0.002, looks.with_density_alpha(looks.cornrow_material('cornrows', color, rows=24)),
-                          density=dens)
+    base = looks.shell_from_body(h, 'cornrows', sel, lambda i, co: 0.002, looks.with_density_alpha(looks.cornrow_material('cornrows', color, rows=24)),
+                                 density=dens)
     me = body.data
     tree = BVHTree.FromPolygons([v.co.copy() for v in me.vertices], [p.vertices[:] for p in me.polygons])
     bun = Vector((c.x, c.y + 0.035, zmax + 0.035))
@@ -90,8 +90,8 @@ def braided_bun(h, targets_dir, n_braids=40, color='#1c110c'):
     coil = []
     for t in np.linspace(0, 1, 160):
         ang = t * 2 * math.pi * 4.5
-        r = 0.045 * (1 - 0.6 * t) + 0.004
-        coil.append((bun.x + r * math.cos(ang), bun.y + r * math.sin(ang), bun.z - 0.025 + 0.05 * t))
+        r = 0.053 * (1 - 0.6 * t) + 0.004
+        coil.append((bun.x + r * math.cos(ang), bun.y + r * math.sin(ang), bun.z - 0.028 + 0.058 * t))
     sp.points.add(len(coil) - 1)
     for p, co in zip(sp.points, coil):
         p.co = (*co, 1)
@@ -104,11 +104,11 @@ def braided_bun(h, targets_dir, n_braids=40, color='#1c110c'):
     ob.data.materials.append(mat)
     for p in ob.data.polygons:
         p.use_smooth = True
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.04, location=(bun.x, bun.y, bun.z), segments=24, ring_count=12)
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.048, location=(bun.x, bun.y, bun.z), segments=24, ring_count=12)
     core = bpy.context.active_object; core.scale = (1, 1, 0.75); core.data.materials.append(mat)
     looks.rigid_on_bone(ob, h, 'head')
     looks.rigid_on_bone(core, h, 'head')
-    return [ob, core]
+    return [base, ob, core]
 
 
 def big_afro(h, targets_dir, size=0.075, melanin=0.97):

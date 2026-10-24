@@ -184,7 +184,7 @@ def paint_face_masks(h, targets_dir, beard=0.0):
     x = np.array([v.co.x for v in body.data.vertices])
     ax = np.abs(x)
     arch = eye_top + 0.012 + 0.006 * np.clip(1 - np.abs(ax - 0.035) / 0.03, 0, 1)  # highest above the outer iris
-    band = np.clip(1 - np.abs(z - arch) / 0.006, 0, 1) * np.clip((ax - 0.011) / 0.006, 0, 1) * np.clip((0.068 - ax) / 0.012, 0, 1)
+    band = np.clip(1 - np.abs(z - arch) / 0.005, 0, 1) * np.clip((ax - 0.011) / 0.006, 0, 1) * np.clip((0.068 - ax) / 0.012, 0, 1)
     brows = np.clip(t('eyebrows/eyebrows-trans-up.target') * 1.8 - 0.2, 0, 1) * band
     col = body.data.color_attributes.new('face', 'FLOAT_COLOR', 'POINT')
     for i in range(nv):
@@ -460,7 +460,7 @@ def brows_and_beard(h, targets_dir, beard=0.0, melanin=0.98):
     body = h['body']
     col = body.data.color_attributes['face']
     brows = [col.data[i].color[1] for i in range(len(body.data.vertices))]
-    particle_hair(h, 'brows', lambda i, co: min(1.0, brows[i] * 0.9), lambda i, co: 1.0, 1500, 0.003, hair_bsdf('brows', melanin),
+    particle_hair(h, 'brows', lambda i, co: min(1.0, brows[i] * 0.8), lambda i, co: 1.0, 1100, 0.0028, hair_bsdf('brows', melanin),
                   children=8, root=0.00012, tip=0.00006)
     if beard > 0:
         T = targets_dir
