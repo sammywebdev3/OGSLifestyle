@@ -6,6 +6,7 @@
 import type { AvatarSelection } from '@/types/player';
 import type { GameBus } from './events';
 import { renderScale } from './render/viewport';
+import { labQuality } from './characterLab/prototype';
 
 export interface GameHandle {
   destroy(): void;
@@ -28,7 +29,7 @@ export async function createGame(parent: HTMLElement, opts: { avatar: AvatarSele
     scale: { mode: Phaser.Scale.NONE, width: start.w * rs, height: start.h * rs, zoom: 1 / rs },
     render: { antialias: true, roundPixels: false, powerPreference: 'high-performance' },
     callbacks: { preBoot: (g) => { g.registry.set('renderScale', rs); } },
-    scene: new StarterAreaScene(opts),
+    scene: new StarterAreaScene({ ...opts, labQuality: labQuality(nav.deviceMemory, new URLSearchParams(window.location.search).get('labq')) }),
   });
   // Character lab test builds only: lets the measurement harness read frame timings.
   if (opts.exposeForTests) (window as unknown as { __oslLab?: unknown }).__oslLab = game;

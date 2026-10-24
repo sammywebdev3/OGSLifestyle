@@ -16,7 +16,7 @@ import { fillPoly, isoPoint, strokePoly } from '../render/isoDraw';
 import { PlayerAvatar, NAME_TAG_LIFT } from '../entities/PlayerAvatar';
 import { LabAvatar } from '../characterLab/LabAvatar';
 import { DemoWalker } from '../characterLab/demoWalker';
-import { LAB_CHARACTERS, LAB_FRAME, labAtlasUrl, labCharacterFor, labTextureKey, type LabCharacter } from '../characterLab/prototype';
+import { LAB_CHARACTERS, labAtlasUrls, labCharacterFor, labTextureKey, type LabCharacter, type LabQuality } from '../characterLab/prototype';
 import { RES } from '../art/canvasIso';
 import { GROUND_KEY, GROUND_OFFSET, installGround } from '../art/groundArt';
 import { OUTSKIRTS, groundFrame, insideMap } from '../art/groundLayout';
@@ -32,6 +32,8 @@ export interface SceneOptions {
    * 3D characters, 'painted' keeps the current characters; both add the same scripted walkers, for comparison.
    */
   characterLab?: '3d' | 'painted';
+  /** Character lab atlas quality ('sd' for low-memory phones). */
+  labQuality?: LabQuality;
 }
 
 type Avatar = PlayerAvatar | LabAvatar;
@@ -92,14 +94,16 @@ export class StarterAreaScene extends Phaser.Scene {
 
   preload() {
     if (this.opts.characterLab !== '3d') return;
-    const frame = { frameWidth: LAB_FRAME.w * LAB_FRAME.res, frameHeight: LAB_FRAME.h * LAB_FRAME.res };
-    for (const c of LAB_CHARACTERS) this.load.spritesheet(labTextureKey(c), labAtlasUrl(c), frame);
+    for (const c of LAB_CHARACTERS) {
+      const { image, json } = labAtlasUrls(c, this.opts.labQuality ?? 'hd');
+      this.load.atlas(labTextureKey(c), image, json);
+    }
   }
 
   /** The painted character, or in the character lab the pre-rendered 3D one (local and remote alike). */
   private makeAvatar(avatar: AvatarSelection, name: string, opts: { remote?: boolean; lab?: LabCharacter } = {}): Avatar {
     if (this.opts.characterLab !== '3d') return new PlayerAvatar(this, avatar, name, opts);
-    return new LabAvatar(this, opts.lab ?? labCharacterFor(avatar), name, opts);
+    return new LabAvatar(this, opts.lab ?? labCharacterFor(avatar), name, { ...opts, quality: this.opts.labQuality });
   }
 
   create() {

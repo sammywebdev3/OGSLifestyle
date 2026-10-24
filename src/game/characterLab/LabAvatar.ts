@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import { addNameTag } from '../entities/PlayerAvatar';
-import { LAB_FRAME, LAB_IDLE, LAB_WALK, labFrame, labTextureKey, pickDirection, type LabCharacter } from './prototype';
+import { LAB_FRAME, LAB_IDLE, LAB_QUALITY, LAB_WALK, labFrame, labTextureKey, pickDirection, type LabCharacter, type LabQuality } from './prototype';
 
 const WALK_FPS = 16; // 8 frames: one stride cycle every 0.5 s
 const IDLE_FPS = 2.5;
@@ -17,9 +17,10 @@ export class LabAvatar {
   private walking = false;
   private clock = 0;
 
-  constructor(scene: Phaser.Scene, character: LabCharacter, name: string, opts: { remote?: boolean } = {}) {
+  constructor(scene: Phaser.Scene, character: LabCharacter, name: string, opts: { remote?: boolean; quality?: LabQuality } = {}) {
+    // Frames are trimmed in the atlas; Phaser measures the origin against each frame's full size.
     this.sprite = scene.add.sprite(0, 0, labTextureKey(character), labFrame(0, LAB_WALK))
-      .setOrigin(LAB_FRAME.ax / LAB_FRAME.w, LAB_FRAME.ay / LAB_FRAME.h).setScale(1 / LAB_FRAME.res);
+      .setOrigin(LAB_FRAME.ax / LAB_FRAME.w, LAB_FRAME.ay / LAB_FRAME.h).setScale(1 / LAB_QUALITY[opts.quality ?? 'hd']);
     this.container = scene.add.container(0, 0, [this.sprite, addNameTag(scene, name, opts.remote ?? false)]);
   }
 

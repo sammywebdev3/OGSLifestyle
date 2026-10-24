@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LAB_COLUMNS, labCharacterFor, labFrame, pickDirection } from './prototype.ts';
+import { LAB_WALK, labCharacterFor, labFrame, labQuality, pickDirection } from './prototype.ts';
 import { DemoWalker, clearPath } from './demoWalker.ts';
 
 test('character lab: screen movement picks the rendered facing direction', () => {
@@ -16,9 +16,20 @@ test('character lab: screen movement picks the rendered facing direction', () =>
   assert.equal(pickDirection(0, 0), null);
 });
 
-test('character lab: atlas frames are indexed row by direction', () => {
-  assert.equal(labFrame(0, 0), 0);
-  assert.equal(labFrame(3, 9), 3 * LAB_COLUMNS + 9);
+test('character lab: atlas frames are named by direction and column', () => {
+  assert.equal(labFrame(0, 0), '0-walk0');
+  assert.equal(labFrame(3, 7), '3-walk7');
+  assert.equal(labFrame(7, LAB_WALK + 3), '7-idle3');
+});
+
+test('character lab: low-memory devices get the smaller atlases', () => {
+  assert.equal(labQuality(8), 'hd');
+  assert.equal(labQuality(undefined), 'hd');
+  assert.equal(labQuality(4), 'sd');
+  assert.equal(labQuality(2), 'sd');
+  assert.equal(labQuality(8, 'sd'), 'sd');
+  assert.equal(labQuality(2, 'hd'), 'hd');
+  assert.equal(labQuality(2, 'bogus'), 'sd');
 });
 
 test('character lab: every existing avatar choice maps to a prototype character', () => {
