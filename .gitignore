@@ -19,3 +19,8 @@ npm-debug.log*
 
 # Python bytecode (character pipeline)
 __pycache__/
+
+# Playwright (character lab browser tests)
+/test-results/
+/playwright-report/
+/blob-report/
