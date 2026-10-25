@@ -16,8 +16,9 @@ import { fillPoly, isoPoint, strokePoly } from '../render/isoDraw';
 import { PlayerAvatar, NAME_TAG_LIFT } from '../entities/PlayerAvatar';
 import { LabAvatar } from '../characterLab/LabAvatar';
 import { DemoWalker } from '../characterLab/demoWalker';
-import { LAB_LOOKS, labCharacterFor, type LabLookId, type LabQuality } from '../characterLab/prototype';
-import { LabAtlasLoader } from '../characterLab/atlasLoader';
+import type { LabQuality } from '../characterLab/prototype';
+import { LabAtlasLoader, type LabTiming } from '../characterLab/atlasLoader';
+import { appearanceFor, resolveLook, type CharacterAppearance } from '../characterLab/appearance';
 import { demoCast } from '../characterLab/demoCast';
 import { RES } from '../art/canvasIso';
 import { GROUND_KEY, GROUND_OFFSET, installGround } from '../art/groundArt';
@@ -38,6 +39,8 @@ export interface SceneOptions {
   labQuality?: LabQuality;
   /** Character lab cast: add the layered mixes, and/or repeat the cast up to `count` walkers (stress tests). */
   labCast?: { mix?: boolean; count?: number };
+  /** Character lab: how quickly unused character atlases are freed (shorter in tests). */
+  labTiming?: LabTiming;
 }
 
 type Avatar = PlayerAvatar | LabAvatar;
@@ -68,7 +71,8 @@ export class StarterAreaScene extends Phaser.Scene {
   private player!: Avatar;
   private demoWalkers = new Map<string, DemoWalker>();
   private labLoader: LabAtlasLoader | null = null;
-  private labLooks = new Map<string, LabLookId>();
+  /** Character lab: the player's atlases, held from preload until the player's avatar holds them itself. */
+  private labPreload: readonly string[] = [];
   private pos = { ...SPAWN };
   private isBlocked = isBlockedFn(buildBlockedSet());
   private keys!: Record<'up' | 'down' | 'left' | 'right' | 'w' | 'a' | 's' | 'd' | 'e' | 'space' | 'enter', Phaser.Input.Keyboard.Key>;
@@ -101,15 +105,28 @@ export class StarterAreaScene extends Phaser.Scene {
   preload() {
     if (this.opts.characterLab !== '3d') return;
     // Only the local player's character loads before the world appears; everyone else's loads when they show up.
-    this.labLoader = new LabAtlasLoader(this, this.opts.labQuality ?? 'hd');
-    this.labLoader.request(LAB_LOOKS[labCharacterFor(this.opts.avatar)].atlases);
+    this.labLoader = new LabAtlasLoader(this, this.opts.labQuality ?? 'hd', this.opts.labTiming);
+    this.labPreload = resolveLook(appearanceFor(this.opts.avatar)).look.atlases;
+    this.labLoader.acquire(this.labPreload);
   }
 
   /** The painted character, or in the character lab the pre-rendered 3D one (local and remote alike). */
-  private makeAvatar(avatar: AvatarSelection, name: string, opts: { remote?: boolean; look?: LabLookId } = {}): Avatar {
+  /** Local and remote players go through the same rule: AvatarSelection -> appearance -> atlases. */
+  private makeAvatar(avatar: AvatarSelection, name: string, opts: { remote?: boolean } = {}): Avatar {
     if (this.opts.characterLab !== '3d' || !this.labLoader) return new PlayerAvatar(this, avatar, name, opts);
-    const look = LAB_LOOKS[opts.look ?? labCharacterFor(avatar)];
+    const { look } = resolveLook(appearanceFor(avatar));
     return new LabAvatar(this, look, name, { remote: opts.remote, quality: this.opts.labQuality, loader: this.labLoader });
+  }
+
+  /**
+   * Character lab (used by the browser tests): change what a character wears, given as an AvatarSelection (what a
+   * real outfit change would carry) or directly as an appearance. 'self' is the local player.
+   */
+  labSetAppearance(id: string, wear: AvatarSelection | CharacterAppearance): boolean {
+    const avatar = id === 'self' ? this.player : this.remotes.get(id)?.avatar;
+    if (!(avatar instanceof LabAvatar)) return false;
+    avatar.setLook(resolveLook('hair' in wear ? wear : appearanceFor(wear)).look);
+    return true;
   }
 
   create() {
@@ -134,6 +151,8 @@ export class StarterAreaScene extends Phaser.Scene {
     this.statics.forEach((st, i) => st.obj.setDepth(this.ranks[i]!));
 
     this.player = this.makeAvatar(this.opts.avatar, this.opts.characterName);
+    this.labLoader?.release(this.labPreload); // the player's avatar holds them now
+    this.labPreload = [];
     this.placePlayer();
     if (this.opts.characterLab) this.addDemoWalkers();
 
@@ -311,9 +330,8 @@ export class StarterAreaScene extends Phaser.Scene {
       // Start on a free tile near the planned spot.
       for (let t = 0; t < 12 && this.isBlocked(Math.floor(SPAWN.x + ox), Math.floor(SPAWN.y + oy)); t++) { ox *= 0.8; oy *= 0.8; }
       const x = SPAWN.x + ox; const y = SPAWN.y + oy;
-      this.labLooks.set(m.id, m.look);
       this.demoWalkers.set(m.id, new DemoWalker(x, y, { x: SPAWN.x, y: SPAWN.y }));
-      this.addRemote({ id: m.id, name: m.name, avatar: m.painted, x, y, facing: 'right', moving: false });
+      this.addRemote({ id: m.id, name: m.name, avatar: m.avatar, x, y, facing: 'right', moving: false });
     });
   }
 
@@ -325,7 +343,7 @@ export class StarterAreaScene extends Phaser.Scene {
   /** Show another player. A second join for the same id replaces the old sprite (never duplicates). */
   private addRemote(r: RemotePlayerView) {
     this.removeRemote(r.id);
-    const avatar = this.makeAvatar(r.avatar, r.name, { remote: true, look: this.labLooks.get(r.id) });
+    const avatar = this.makeAvatar(r.avatar, r.name, { remote: true });
     avatar.face(r.facing === 'left' ? -1 : 1);
     this.remotes.set(r.id, { name: r.name, avatar, motion: new Smoother(r.x, r.y), facing: r.facing, moving: r.moving });
     this.placeRemote(this.remotes.get(r.id)!);
@@ -436,12 +454,17 @@ export class StarterAreaScene extends Phaser.Scene {
       if (Math.abs(sdx) > 0.01) r.facing = sdx < 0 ? 'left' : 'right'; // what the protocol would carry
       r.motion.setTarget(p.x, p.y); r.moving = p.moving;
     }
+    // Character lab: characters well outside the camera's view let go of their atlases for a while (see LabAvatar).
+    const view = this.cameras.main.worldView;
+    const M = 160;
     for (const r of this.remotes.values()) {
       const from = gridToScreen(r.motion.x, r.motion.y);
       r.motion.step(dt);
       this.placeRemote(r);
       const to = gridToScreen(r.motion.x, r.motion.y);
       if (r.avatar instanceof LabAvatar) {
+        const { x, y } = r.avatar.container;
+        r.avatar.setOnScreen(x > view.x - M && x < view.right + M && y > view.y - M && y < view.bottom + M);
         // The protocol only says left or right; the 3D characters face their actual movement on screen.
         r.avatar.animate(dt, r.moving, to.x - from.x, to.y - from.y);
       } else {

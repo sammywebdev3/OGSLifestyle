@@ -87,7 +87,7 @@ export interface LabState {
   characters: CharacterState[];
   /** Texture keys of loaded lab atlases ('lab-<atlas>'). */
   labTextures: string[];
-  /** Atlases the loader gave up on (Phaser loader errors). */
+  /** Atlases whose last download failed (atlas names, e.g. 'zainab'). */
   failed: string[];
   /** Estimated GPU memory of all textures and of the lab atlases (width x height x 4 bytes), MB. */
   textureMB: number;
@@ -141,3 +141,29 @@ export function expectClean(lab: LabPage, opts: { allowConsole?: RegExp } = {}) 
 
 /** Atlas image files requested, by name (e.g. 'tunde-hd.webp'). */
 export const atlasImages = (lab: LabPage) => lab.atlasRequests.filter((r) => r.file.endsWith('.webp')).map((r) => r.file);
+
+/**
+ * Point the camera far away from everyone (lifting the camera's map bounds, which would otherwise clamp it), so
+ * every other character leaves the view. lookBack restores the bounds and follows the player again.
+ */
+export async function lookAway(page: Page) {
+  await page.evaluate(() => {
+    const sc = (window as any).__oslLab.scene.scenes[0];
+    const cam = sc.cameras.main;
+    const b = cam.getBounds();
+    (window as any).__labBounds = { x: b.x, y: b.y, w: b.width, h: b.height };
+    cam.stopFollow();
+    cam.removeBounds();
+    cam.centerOn(sc.player.container.x + 5000, sc.player.container.y + 5000);
+  });
+}
+
+export async function lookBack(page: Page) {
+  await page.evaluate(() => {
+    const sc = (window as any).__oslLab.scene.scenes[0];
+    const cam = sc.cameras.main;
+    const b = (window as any).__labBounds;
+    if (b) cam.setBounds(b.x, b.y, b.w, b.h);
+    cam.startFollow(sc.player.container, true, 0.12, 0.12);
+  });
+}

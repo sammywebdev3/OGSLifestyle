@@ -1,22 +1,26 @@
 /**
- * Character lab: who walks around Kuto Street in the lab (never sent to the server). The four characters, optionally
- * the layered mixes (one body wearing different outfits and hairstyles), optionally repeated for stress tests.
+ * Character lab: who walks around Kuto Street in the lab (never sent to the server). Each walker is described only
+ * by an AvatarSelection, exactly like a real remote player, so its look comes from the same appearanceFor /
+ * resolveLook rules as everyone else's. The base cast is the four baked characters; `mix` adds layered combinations
+ * (one body wearing other outfits and hairstyles); `count` repeats the cast for stress tests.
  */
 import type { AvatarSelection } from '@/types/player';
-import type { LabLookId } from './prototype';
 
-export interface CastMember { id: string; name: string; look: LabLookId; painted: AvatarSelection }
+export interface CastMember { id: string; name: string; avatar: AvatarSelection }
 
 const BASE: Omit<CastMember, 'id'>[] = [
-  { name: 'Tunde', look: 'tunde', painted: { body: 'masc', skin: 'deep', headwear: 'none', outfit: 'palm' } },
-  { name: 'Femi', look: 'femi', painted: { body: 'masc', skin: 'brown', headwear: 'fila', outfit: 'adire' } },
-  { name: 'Amaka', look: 'amaka', painted: { body: 'femme', skin: 'deep', headwear: 'braids', outfit: 'laterite' } },
-  { name: 'Zainab', look: 'zainab', painted: { body: 'femme', skin: 'warm', headwear: 'none', outfit: 'ink' } },
+  { name: 'Tunde', avatar: { body: 'masc', skin: 'deep', headwear: 'none', outfit: 'palm' } },
+  { name: 'Femi', avatar: { body: 'masc', skin: 'brown', headwear: 'fila', outfit: 'adire' } },
+  { name: 'Amaka', avatar: { body: 'femme', skin: 'deep', headwear: 'braids', outfit: 'adire' } },
+  { name: 'Zainab', avatar: { body: 'femme', skin: 'warm', headwear: 'none', outfit: 'ink' } },
 ];
 const MIXES: Omit<CastMember, 'id'>[] = [
-  { name: 'Tunde · senator', look: 'tunde-senator', painted: { body: 'masc', skin: 'deep', headwear: 'none', outfit: 'adire' } },
-  { name: 'Tunde · fila', look: 'tunde-fila', painted: { body: 'masc', skin: 'deep', headwear: 'fila', outfit: 'palm' } },
-  { name: 'Tunde · senator + fila', look: 'tunde-senator-fila', painted: { body: 'masc', skin: 'deep', headwear: 'fila', outfit: 'adire' } },
+  { name: 'Tunde · senator', avatar: { body: 'masc', skin: 'deep', headwear: 'none', outfit: 'adire' } },
+  { name: 'Tunde · fila', avatar: { body: 'masc', skin: 'deep', headwear: 'fila', outfit: 'palm' } },
+  { name: 'Tunde · senator + fila', avatar: { body: 'masc', skin: 'deep', headwear: 'fila', outfit: 'cream' } },
+  { name: 'Amaka · crop tank', avatar: { body: 'femme', skin: 'deep', headwear: 'braids', outfit: 'ink' } },
+  { name: 'Amaka · afro', avatar: { body: 'femme', skin: 'brown', headwear: 'none', outfit: 'ogun' } },
+  { name: 'Amaka · tank + afro', avatar: { body: 'femme', skin: 'deep', headwear: 'none', outfit: 'laterite' } },
 ];
 
 /** The cast: `mix` adds the layered looks, `count` (if larger) repeats the cast with numbered names. */

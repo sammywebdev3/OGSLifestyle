@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LAB_WALK, labCharacterFor, labFrame, labQuality, pickDirection } from './prototype.ts';
+import { LAB_WALK, labAtlasUrls, labFrame, labQuality, pickDirection } from './prototype.ts';
 import { DemoWalker, clearPath } from './demoWalker.ts';
 
 test('character lab: screen movement picks the rendered facing direction', () => {
@@ -32,13 +32,6 @@ test('character lab: low-memory devices get the smaller atlases', () => {
   assert.equal(labQuality(2, 'bogus'), 'sd');
 });
 
-test('character lab: every existing avatar choice maps to a prototype character', () => {
-  assert.equal(labCharacterFor({ body: 'masc', skin: 'deep', headwear: 'none', outfit: 'palm' }), 'tunde');
-  assert.equal(labCharacterFor({ body: 'masc', skin: 'brown', headwear: 'fila', outfit: 'palm' }), 'femi');
-  assert.equal(labCharacterFor({ body: 'femme', skin: 'warm', headwear: 'gele', outfit: 'ink' }), 'amaka');
-  assert.equal(labCharacterFor({ body: 'femme', skin: 'light', headwear: 'none', outfit: 'laterite' }), 'zainab');
-});
-
 test('character lab: demo walkers never walk through blocked tiles', () => {
   const blocked = (x: number) => x === 5; // a wall along x = 5
   assert.equal(clearPath(1, 1, 3, 3, blocked), true);
@@ -55,19 +48,7 @@ test('character lab: demo walkers never walk through blocked tiles', () => {
   assert.ok(moved > 1000);
 });
 
-test('character lab: looks stack body, outfit and hair layers, and reuse them across combinations', async () => {
-  const { LAB_LOOKS, labAtlasUrls } = await import('./prototype.ts');
-  for (const [id, look] of Object.entries(LAB_LOOKS)) {
-    assert.ok(look.atlases.length === 1 || look.atlases.length === 3, id);
-    if (look.atlases.length === 3) {
-      const [body, outfit, hair] = look.atlases;
-      assert.match(body!, /^body-/); assert.match(outfit!, /^outfit-/); assert.match(hair!, /^hair-/);
-    }
-  }
-  // Four combinations of one body, two outfits and two hairstyles need five atlases, not four full ones.
-  const layered = Object.values(LAB_LOOKS).filter((l) => l.atlases.length === 3);
-  assert.equal(layered.length, 4);
-  assert.equal(new Set(layered.flatMap((l) => l.atlases)).size, 5);
+test('character lab: atlas URLs are encoded and carry the quality', () => {
   assert.deepEqual(labAtlasUrls('outfit-femi.tunde', 'sd'), {
     image: '/prototype-characters/outfit-femi.tunde-sd.webp', json: '/prototype-characters/outfit-femi.tunde-sd.json',
   });
@@ -75,8 +56,16 @@ test('character lab: looks stack body, outfit and hair layers, and reuse them ac
 
 test('character lab: the demo cast has unique ids, mixes on request and repeats for stress tests', async () => {
   const { demoCast } = await import('./demoCast.ts');
-  assert.deepEqual(demoCast().map((m) => m.look), ['tunde', 'femi', 'amaka', 'zainab']);
-  assert.equal(demoCast({ mix: true }).length, 7);
+  const { appearanceFor, resolveLook } = await import('./appearance.ts');
+  // The base cast is exactly the four baked characters, reached through the same rules as real remote players.
+  assert.deepEqual(demoCast().map((m) => resolveLook(appearanceFor(m.avatar)).look.atlases), [['tunde'], ['femi'], ['amaka'], ['zainab']]);
+  const mixed = demoCast({ mix: true });
+  assert.equal(mixed.length, 10);
+  for (const m of mixed.slice(4)) {
+    const r = resolveLook(appearanceFor(m.avatar));
+    assert.equal(r.kind, 'layered', m.name);
+    assert.equal(r.exact, true, m.name);
+  }
   const big = demoCast({ count: 20 });
   assert.equal(big.length, 20);
   assert.equal(new Set(big.map((m) => m.id)).size, 20);

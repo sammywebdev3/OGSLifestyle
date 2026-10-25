@@ -16,6 +16,7 @@ export async function createGame(parent: HTMLElement, opts: { avatar: AvatarSele
   if (typeof window === 'undefined') throw new Error('createGame() must run in the browser');
   const [Phaser, { StarterAreaScene }] = await Promise.all([import('phaser'), import('./scenes/StarterAreaScene')]);
   const nav = navigator as Navigator & { deviceMemory?: number };
+  const query = new URLSearchParams(window.location.search);
   // Render at the device's pixel density (capped), then show the canvas at CSS size: sharp on phones.
   const rs = renderScale(window.devicePixelRatio, nav.hardwareConcurrency, nav.deviceMemory);
   const cssSize = () => ({ w: Math.max(1, parent.clientWidth || 800), h: Math.max(1, parent.clientHeight || 600) });
@@ -29,7 +30,13 @@ export async function createGame(parent: HTMLElement, opts: { avatar: AvatarSele
     scale: { mode: Phaser.Scale.NONE, width: start.w * rs, height: start.h * rs, zoom: 1 / rs },
     render: { antialias: true, roundPixels: false, powerPreference: 'high-performance' },
     callbacks: { preBoot: (g) => { g.registry.set('renderScale', rs); } },
-    scene: new StarterAreaScene({ ...opts, labQuality: labQuality(nav.deviceMemory, new URLSearchParams(window.location.search).get('labq')) }),
+    // Character lab only (ignored unless opts.characterLab is set): ?labq=hd|sd forces the atlas quality, and
+    // ?labgc=fast frees unused character atlases within a second (for the browser tests).
+    scene: new StarterAreaScene({
+      ...opts,
+      labQuality: labQuality(nav.deviceMemory, query.get('labq')),
+      labTiming: query.get('labgc') === 'fast' ? { unloadDelayMs: 600, releaseAfterMs: 300 } : undefined,
+    }),
   });
   // Character lab test builds only: lets the measurement harness read frame timings.
   if (opts.exposeForTests) (window as unknown as { __oslLab?: unknown }).__oslLab = game;
