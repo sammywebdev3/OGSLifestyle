@@ -1,107 +1,181 @@
-# Android test checklist: character lab
+# Android device test procedure: character lab
 
 **Status: not yet run on any Android device.** Every number in `docs/character-sprites-test-report.md` and every
-`npm run test:lab:perf` result is a **simulation**: headless desktop Chromium with software WebGL. Phone viewport, pixel
-ratio, touch and `navigator.deviceMemory` are emulated, but CPU, GPU, memory limits, thermal behaviour and network
-are the host's. Do not report Android results until this checklist has been run on a real phone and its results
-recorded below.
+`npm run test:lab:perf` result is a **simulation**: headless desktop Chromium with software WebGL and an emulated phone
+viewport. Do not report Android results until this procedure has been run on real phones and the results table below
+is filled in.
 
-## Simulated vs real: what each can tell us
+Time needed: about 15 min of setup, then about 45 min per phone.
 
-| Question | Simulated browser (`test:lab`, `test:lab:perf`) | Real Android |
+## What the phones must tell us that the simulation cannot
+
+| Question | Simulated (`test:lab`, `test:lab:perf`) | Real phone |
 | --- | --- | --- |
-| Is the right atlas quality picked for a given `deviceMemory`? | ✅ tested | confirm: the real `deviceMemory` value |
-| Is each atlas loaded once and shared? Does a failed atlas break the game? | ✅ tested | – |
-| Is the lab inert in a normal build? | ✅ tested | – |
-| Frame time and fps | relative only (SwiftShader runs on the CPU) | **needed** |
-| GPU texture upload stalls when atlases arrive | ❌ not visible | **needed** |
-| Real memory use, tab reloads under memory pressure | estimate only (texture size × 4 bytes) | **needed** |
-| Download time on mobile networks | ❌ localhost | **needed** (or throttled) |
-| How SD and HD look on the actual screen | screenshots at DPR 2 | **needed** |
-| Heat and throttling over 10+ minutes | ❌ | **needed** |
+| Right atlas quality for the device's memory; each atlas loaded once; failed atlas recovers; lab inert in a normal build | ✅ tested | confirm the real `deviceMemory` |
+| Frame rate with 5 and about 20 characters | relative only (CPU rendering) | **needed** |
+| Stalls when atlases arrive or are freed (GPU upload) | ❌ invisible | **needed** |
+| Real memory use; tab reloads under memory pressure | estimate only | **needed** |
+| Download time on mobile data | ❌ localhost | **needed** |
+| How HD and low-memory (SD) look on the actual screen | screenshots | **needed** |
+| Heat and throttling over 10 minutes | ❌ | **needed** |
 
-## Devices
+## 0. You need
 
-Test at least one of each. Record the exact model, Android version, Chrome version and RAM.
+- **Phones:**
+  - one **low-end** Android phone (2–4 GB RAM, e.g. Galaxy A05/A15, Tecno Spark, Infinix Hot, itel);
+  - one **mid-range** phone (6–8 GB, e.g. Galaxy A35/A55, Redmi Note 13, Tecno Camon).
+- **Software:** both phones on Chrome stable.
+- **Computer:** a computer with this branch, Node 20+, desktop Chrome and a USB cable, on the **same Wi-Fi** as the phones.
+- **Never use a Vercel Preview URL.** Previews share the production database. Everything here runs on your computer
+  in offline guest mode.
 
-| Tier | Examples | RAM | Expected atlas |
-| --- | --- | --- | --- |
-| Low end | Samsung Galaxy A05/A15, Tecno Spark, Infinix Hot, itel | 2–4 GB | SD (`deviceMemory` ≤ 4) |
-| Mid range | Samsung Galaxy A35/A55, Redmi Note 13, Tecno Camon | 6–8 GB | HD |
+## 1. Setup (once)
 
-Chrome reports `navigator.deviceMemory` rounded to 0.25/0.5/1/2/4/8. A 6 GB phone usually reports 4 GB and gets SD. Record the value.
+On the computer, in the repository:
 
-## Setup (one time, about 15 minutes)
+```sh
+git checkout feat/character-3d-prototype && npm ci
+NEXT_PUBLIC_CHARACTER_LAB=1 NEXT_PUBLIC_SUPABASE_URL= NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY= npm run build
+npx next start -H 0.0.0.0 -p 3200
+```
 
-1. **Build the lab version on a computer** on the same Wi-Fi as the phone:
-   ```sh
-   NEXT_PUBLIC_CHARACTER_LAB=1 npm run build
-   npx next start -H 0.0.0.0 -p 3200
+Find the computer's LAN address, e.g. `192.168.1.20`:
+
+- macOS: `ipconfig getifaddr en0`
+- Linux: `hostname -I`
+- Windows: `ipconfig`
+
+Below, `$H` means `http://<that address>:3200`.
+
+On each phone:
+
+1. **Prepare the phone.** Charge above 50%, turn battery saver off, close other apps, and let it cool if it is warm.
+2. **Enable debugging.** Settings → About phone → tap *Build number* 7 times. Then Developer options → turn on *USB debugging*.
+3. **Connect.** Plug into the computer and accept the prompt. Open desktop Chrome at `chrome://inspect/#devices`.
+4. **Open the lab.** In the phone's Chrome, open `$H/play?lab=painted`. If it doesn't load, check the Wi-Fi and the computer's
+   firewall for port 3200.
+5. **Record the phone's details** in the results table:
+   - model, RAM, Android version and Chrome version (`chrome://version` on the phone);
+   - `navigator.deviceMemory`: on the computer, click *inspect* on the phone's tab, then type
+     `navigator.deviceMemory` in the Console.
+
+Every URL below adds **`&labhud=1`**, which shows a small readout in the top-left corner:
+
+```
+fps 58  q sd
+drawn 5/5
+atlases 4  9.7 MB
+loads 4 unloads 0 fail 0
+```
+
+- **fps:** frames per second.
+- **q:** the atlas quality picked, `hd` or `sd`.
+- **drawn:** characters drawn from their atlases, out of all characters.
+- **atlases:** character atlases in memory, and their texture size.
+- **loads / unloads / fail:** atlas loads, unloads and failed downloads so far.
+
+A phone screenshot (power + volume down) of the readout is the main evidence. The DevTools steps add detail.
+
+## 2. Runs (on each phone)
+
+Before **every** run: close the tab and open the URL in a new tab, so nothing is reused from the previous run.
+
+| Run | URL (after `$H/play?`) | What it compares |
+| --- | --- | --- |
+| A | `lab=painted&labhud=1` | today's renderer, 5 characters |
+| B | `lab=characters&labhud=1` | new renderer, 5 characters, automatic quality |
+| C | `lab=characters&labq=sd&labhud=1` | new, forced **low-memory** atlases |
+| D | `lab=characters&labq=hd&labhud=1` | new, forced **HD** atlases |
+| E | `lab=painted&labn=20&labhud=1` | today's renderer, 21 characters |
+| F | `lab=characters&labmix=1&labn=20&labhud=1` | new, 21 characters with layered outfits, automatic quality |
+| G | `lab=characters&labmix=1&labcycle=3&labhud=1` | outfit changes every 3 s |
+| H | `lab=characters&labmix=1&labhud=1` + the console steps below | off-screen unloading and reloading |
+| I | run F again with DevTools → Network → throttling *Slow 4G* | loading on a slow connection |
+
+Runs **A–F**, each phone:
+
+1. Open the URL. With a stopwatch, note two times: when the street appears, and when `drawn` reaches its total (for
+   example `5/5`). Placeholders (a soft shadow under a name tag) are allowed until then.
+2. Take a **screenshot** of the HUD at rest.
+3. Walk with the on-screen pad for 30 s: a square round the street, then past the building corner, so characters go
+   behind and in front of it.
+4. Note the **lowest and typical fps** shown while walking, and take a second screenshot mid-walk.
+5. Optional, for detail: in DevTools → Performance, record 10 s of walking, then *Save profile* as
+   `<phone>-<run>.json`.
+6. Write down any **glitch**:
+   - a character flickering or blinking out;
+   - a jump when turning;
+   - feet sliding;
+   - a character drawn in front of a building it is behind;
+   - a body gap or a missing piece of clothing;
+   - a placeholder that never resolves.
+
+Run **G** (outfit changes, with **2 minutes** of standing and walking):
+
+- The player's outfit changes every 3 s. It must **never disappear or blink**. The old outfit stays until the new one
+  is ready.
+- At the end, screenshot the HUD. `fail` must be `0`. `atlases` must not keep growing: it settles once all looks have
+  been seen.
+
+Run **H** (off screen and back): in the DevTools Console on the phone's tab, paste:
+
+```js
+const sc = __oslLab.scene.scenes[0], cam = sc.cameras.main;
+window.__b = cam.getBounds(); cam.stopFollow(); cam.removeBounds();
+cam.centerOn(sc.player.container.x + 5000, sc.player.container.y + 5000);   // look away from everyone
+```
+
+1. Wait **15 s**, then screenshot the HUD. Expect `unloads` to rise and `atlases` / MB to fall, to only the player's atlas.
+2. Then paste:
+   ```js
+   cam.setBounds(__b.x, __b.y, __b.width, __b.height); cam.startFollow(sc.player.container, true, 0.12, 0.12);
    ```
-   The phone opens `http://<computer-LAN-IP>:3200/play?lab=characters`.
-   - Leave Supabase unset: guest mode, no production data.
-   - **Do not use a Vercel Preview URL.** Previews share the production database.
-2. **Phone settings:**
-   1. Enable Developer options (Settings → About phone → tap *Build number* 7 times).
-   2. Turn on *USB debugging*.
-   3. Use Chrome stable, and close other apps.
-3. **Remote DevTools:** connect the phone by USB, open `chrome://inspect/#devices` in desktop Chrome, accept the prompt on
-   the phone, then click *inspect* on the lab tab.
-4. Charge the phone above 50%, turn battery saver off, and let it cool if it is warm.
+3. Note how long until `drawn` is back to its total, and screenshot. Every character must come back drawn.
+4. In the Network panel, note whether the re-requested atlases came from the cache (*Size* column).
 
-## Test runs
+Run **I** (slow network): with *Slow 4G* throttling, the street must appear about as fast as run E. Note the time until
+`drawn` is complete.
 
-Run each URL on each phone. Before each run, close the tab and open a new one.
+**Failed downloads**, mid-range phone only: in DevTools → Network, right-click a `zainab-*.webp` request → *Block request URL*.
 
-| # | URL (append to `http://<ip>:3200`) | What it checks |
-| --- | --- | --- |
-| A | `/play?lab=painted` | baseline: today's characters |
-| B | `/play?lab=characters` | 3D, automatic quality |
-| C | `/play?lab=characters&labq=sd` | low-memory atlases |
-| D | `/play?lab=characters&labq=hd` | HD on this phone |
-| E | `/play?lab=characters&labmix=1&labn=20` | 21 characters, layered looks |
-| F | `/play?lab=painted&labn=20` | 21 painted characters (baseline for E) |
-| G | `/play?lab=characters&labmix=1` then walk far down the street and back | atlases freed off screen and loaded again on return (watch Network for re-requests and Memory for the drop) |
+1. Reload run B. Zainab stays a placeholder and everything else works; `fail` shows ≥ 1.
+2. Unblock the request, then do run H's two console steps. Zainab must come back drawn.
 
-For each run, record:
+**Endurance**, runs B and F only: leave the game running for 10 minutes with occasional walking. Note any fps drop,
+heat, or a tab reload.
 
-1. **Quality picked:** in the remote console, `navigator.deviceMemory`, and which `-hd`/`-sd` files load in the Network panel.
-2. **Load:**
-   - the time until the world is visible;
-   - the time until every character is drawn instead of a placeholder shadow (Network panel: the last atlas finishes).
-3. **Frame rate:**
-   1. In DevTools → Performance, record 10 s while walking in a square.
-   2. Note the average fps, the number of long tasks and any frames over 50 ms.
-   3. Save the trace (*Save profile*) as `android-<phone>-<run>.json`.
-4. **Memory:**
-   - DevTools → Memory → *Take heap snapshot* size;
-   - Android Settings → Developer options → *Running services* / *Memory* for Chrome's total use after 2 minutes.
-5. **Network:** repeat B and E with DevTools network throttling set to *Fast 4G* and then *Slow 4G*. Record the time until all
-   characters are drawn. The world itself must not wait.
-6. **Visual:**
-   - Screenshots at normal zoom (power + volume down).
-   - Are the outfits recognisable at SD?
-   - Any flicker, jumps when turning, or characters drawn in front of buildings they are behind?
-7. **Unloading (run G):**
-   - After walking away, character texture memory should drop: check DevTools → Memory or `chrome://gpu`.
-   - On return, everyone is drawn again within a few seconds, with no blank characters.
-   - Note whether the re-requested atlases come from the cache (Network panel, *Size* column).
-8. **Endurance (B and E only):** play for 10 minutes. Did fps drop, did the phone get hot, did the tab reload?
+**Memory**, runs A, B, F and H: on the computer, chrome://inspect → *inspect* → Memory → *Take heap snapshot*. Note the
+size. The HUD's MB figure is the character texture estimate.
 
-## Pass criteria (proposed; to be confirmed after the first run)
+## 3. Evidence to send back
 
-- No crash, reload or blank characters in any run. Placeholders may show for a few seconds while atlases load.
-- **Frame cost:**
-  - Low end: runs B and C hold at least the fps of run A, minus 10%.
-  - Mid range: run E holds at least the fps of run F, minus 10%.
-- **Memory:** run B on the low-end phone adds no more than about 15 MB over run A (SD).
-- **Load:** on *Slow 4G*, all characters are drawn within 10 s and the world within the same time as today.
-- **Visual:** testers can name each character's outfit at SD on the low-end phone.
+For each phone:
 
-## Results
+- [ ] Phone details (model, RAM, Android, Chrome, `deviceMemory`).
+- [ ] HUD screenshots: at rest and mid-walk for A–F, the end of G, during and after H, and the end of I.
+- [ ] Times to street and to all characters drawn: A–F and I.
+- [ ] Typical and lowest fps: A–F.
+- [ ] Glitch notes, each with run, direction, character and what happened. Video if possible.
+- [ ] Results of the blocked download and the 10-minute endurance runs.
+- [ ] Optional: saved Performance profiles and heap snapshot sizes.
 
-| Date | Phone (model, RAM, Android, Chrome) | `deviceMemory` | Run | Quality | World ms | All characters ms | fps | Long tasks | Memory | Notes | Tester |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| – | *not yet tested* | | | | | | | | | | |
+Attach traces, screenshots and video to the PR, not to the repository.
 
-Attach the saved traces and screenshots to the PR or issue, not to the repository.
+## 4. Pass criteria (proposed; to be confirmed after the first run)
+
+- No crash, tab reload, blank character, or placeholder that never resolves.
+- **Frame cost:** new-renderer runs hold at least the fps of the matching painted run, minus 10%. That means B, C and D against A,
+  and F against E, on both phones.
+- **Quality:**
+  - the low-end phone picks `sd`;
+  - testers can name each outfit at SD at normal zoom;
+  - note whether HD looks visibly sharper than SD on the mid-range phone (if not, SD could be used everywhere).
+- **Outfit changes (G):** 0 blinks, 0 failures, a bounded `atlases` count.
+- **Off screen (H):** memory falls when away, and everyone is drawn again on return.
+- **Slow 4G (I):** the street appears as fast as today, and all characters are drawn within 10 s.
+
+## 5. Results
+
+| Date | Phone (model, RAM, Android, Chrome) | `deviceMemory` | Run | Quality | Street s | All drawn s | fps typical / low | Memory | Glitches | Tester |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| – | *not yet tested* | | | | | | | | | |

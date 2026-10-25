@@ -364,21 +364,9 @@ Problems found and fixed along the way:
 - **Shorts through the slit.** The first shorts (to mid-thigh) showed through the dress slit while walking (waist and legs
   regions, a 20 px blob). They now stop 5 cm below the crotch: 4 px left, under the limit.
 
-**Known difference, not fixed: the crop tank's back strap.** Seen from behind (directions N/NE/NW), the strap is
-about 2–3 world px narrower in the stack than in the baked render. There is no hole: skin shows where the baked render
-shows strap.
-
-What I ruled out:
-
-- It is not the holdout geometry. The evaluated body and its holdout copy are identical (9,514 vertices, 0.0 maximum
-  difference).
-- It is not skin grazing the strap. Pulling the holdout 3 mm inside the skin changed nothing.
-- It is not object-level holdout semantics. A shader holdout gives the same result.
-- It is not the clothes mask. An unmasked baked render still shows the wide strap.
-
-The cause is still open. The proposed fix is to derive the outfit layer from the full render with a per-object
-coverage pass (cryptomatte) instead of holdouts. That needs a small compositing step in `sprites.py`, and I have not
-started it.
+**Known difference, not fixed: Amaka in the crop tank seen from NE and E.** Section 12 has the investigation. The cause
+is the big afro's shadow on the upper back, which the outfit layer does not carry. It is **not** a narrower strap,
+as this section first said, and not a hole.
 
 ### 11.2 Atlas management: sharing, unloading, recovery (Task 2)
 
@@ -502,11 +490,103 @@ Visual checks:
 - **Re-downloads.** An atlas freed and needed again is requested again. Whether the browser cache answers it, and how
   quickly, depends on the cache headers of the deployment and on the phone. I have not measured it. The 8 s delay
   keeps short trips off screen free.
-- **Tank strap.** The crop tank's back strap is narrower in the layered version (11.1).
+- **Missing cross-layer shadows.** A hairstyle's shadow on the outfit (the afro on the crop tank) is missing in layered
+  characters (section 12).
 - **Fallback looks.** Femi and Zainab have no layer sets, so their bodies fall back to their baked looks for any other outfit
   (`exact: false`). Rendering their layers is pipeline time only, about 26 min per body on 4 cores.
 - **Bundle contents.** The lab code ships inside the game chunk of a normal build but stays inert. Production integration
   should split it out.
+
+## 12. Crop tank investigation and asset-management review (added 2026-10-25)
+
+All results here are from renders and browser simulations. **No Android device was used.**
+
+### 12.1 Crop tank: the cause is a missing hair shadow, not the strap
+
+- **Reproduced.** `check_layers.py` on Amaka's body + crop tank + big afro fails the same **22 of 96 frames**:
+  - every frame of direction 5 (NE), 12 of 12;
+  - direction 6 (E), 10 of 12;
+  - no frame in the other six directions.
+- **Pixel decomposition.** In the flagged pixels the outfit layer is opaque white, while the baked render is blue-grey
+  (about 183/192/203). The baked render has a **shadow cast by the big afro on the upper back and shoulder**. In the outfit
+  pass the hair is hidden, so that shadow is missing. The remaining flags are a few strap-edge pixels where skin
+  shows through the strap within a pixel. The baked render shows the same mix there, so they are legitimate.
+
+![](character-prototype/m3/strap-investigation.jpg)
+
+Hypotheses ruled out on the way (§ 11.1): holdout geometry (identical), skin grazing the strap (a 3 mm shrink changes
+nothing), object vs shader holdouts (same), the clothes mask (an unmasked baked render still differs), and denoising
+(the same partial alpha with OIDN off).
+
+**Proof.** I rendered directions 0 (control), 5 and 6 again in a diagnostic copy of `sprites.py` (scratch only, not
+committed). In it, parts hidden in a pass still cast shadows but are invisible to the camera:
+
+| 36 frames (directions 0, 5, 6) vs baked | Failing frames | Largest colour blob | Holes / extra |
+| --- | --- | --- | --- |
+| Current layers | 22 | 73 px | 2 / 1 px |
+| Outfit pass with the hair as a shadow caster | **0** | 5 px | 2 / 1 px |
+| Every pass with cross-layer shadow casters | **0** | 6 px | 0 / 0 px |
+
+**Why neither that nor the proposed per-object coverage pass is adopted.** Both put *this hairstyle's* shadow into
+the outfit layer.
+
+- **Shadow caster.** The diagnostic outfit layer differs from the current one by 1,371 pixels (over 48/255) across these
+  36 frames, more than 12 px in 26 of them. Worn with any other hairstyle (braided bun, fila, fade), that would be a
+  **phantom afro shadow** of the same size: the right-hand panel above.
+- **Coverage pass.** It cuts the outfit layer out of one combination's full render, so it has the same flaw, plus a
+  cryptomatte decoding step. It also cannot produce the body layer, whose skin under the clothes is never visible
+  in a full render.
+- **The trade-off.** Both approaches move the error from one combination to every other combination, and would bring back
+  per-combination outfit atlases. That defeats the layering.
+
+**Decision.** The renderer is **unchanged**, so the three passing combinations are unaffected. The difference is
+recorded as a lighting limitation of layered characters: a hairstyle's own cast shadow on the clothes is missing.
+
+- **Where it shows.** It is visible only with big hair (the afro) over light, sleeveless tops, from two of eight
+  directions, as a 2–3 world-px patch.
+- **Possible later fix (proposal, not started).** A per-hairstyle *shadow layer*, rendered once per body, drawn between
+  the outfit and the hair with multiply blending. It would be one more texture per hairstyle and one more sprite per
+  character.
+
+### 12.2 Asset management review
+
+I reviewed `atlasRefs.ts`, `atlasLoader.ts`, `LabAvatar.ts` and the scene wiring:
+
+- **Shared atlases.** Acquire before release when swapping, so shared layers never reach zero.
+- **Unloads.** An unload is cancelled when an atlas is acquired again. A load that finishes after its last release is
+  scheduled for unload.
+- **Failed atlases.** Retried by the next user.
+- **Off screen.** Avatars off screen adopt a pending look and take it again on return.
+- **The local player.** Always keeps its atlases.
+
+One weakness, fixed: when the last-moment safety check found a sprite still drawing from an atlas with no references,
+the unload was skipped **for good**, so the texture could stay forever. It is now checked again after the delay
+(unit-tested). Per-atlas load and unload counts are now recorded for diagnostics.
+
+New tests:
+
+| Test | Result |
+| --- | --- |
+| Unit: 20 rapid back-and-forth swaps between two looks sharing a body, before any load finishes | each atlas loaded once; only the unworn outfit freed |
+| Unit: a skipped unload is retried and frees the atlas once nothing draws from it | passed |
+| Browser: 40 outfit changes 60 ms apart (5 looks, Tunde and Amaka bodies, real 8 s unload delay) | 0 blinks in 20 ms sampling; every atlas file downloaded **once**; after the delay only the 4 worn atlases remain (bounded) |
+| Browser: changes spaced so old layers are freed in between (fast timing) | every download matches a load; never two loads without an unload in between; loaded ⇔ referenced |
+| Browser: `?labcycle` and `?labhud` device-testing aids | outfit changes on a timer; the HUD shows quality, drawn count and load/unload/failure counters |
+
+The first version of the 40-change test caught `body-tunde-hd.webp` downloaded 8 times. That turned out to be correct
+behaviour under the test's 0.6 s fast unload delay on a heavily loaded machine: the atlas really was unused for longer than
+0.6 s between uses. The test now uses the game's real 8 s delay, and a separate test checks that every re-download
+follows a real unload.
+
+### 12.3 Device-testing aids (lab builds only)
+
+| Parameter | What it does |
+| --- | --- |
+| `?labhud=1` | On-screen readout: fps, atlas quality, characters drawn / total, character atlases and their MB, loads / unloads / failures |
+| `?labcycle=N` | Changes the local player's outfit every N seconds, through the same AvatarSelection path as a real change |
+
+Both are ignored in normal builds: the flag-off test now passes them too. The procedure for real phones is
+[`android-test-checklist.md`](android-test-checklist.md).
 
 ## How to reproduce
 
