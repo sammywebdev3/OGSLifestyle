@@ -1,0 +1,17 @@
+# Character pipeline: Blender as a Python module (headless) plus image tools. Python 3.13 is required: bpy wheels
+# exist only for the Python version Blender pins (Blender 5.2 -> CPython 3.13). Every package is pinned, including
+# bpy's own dependencies, so a new environment renders the same way. Install with setup.sh.
+bpy==5.2.3
+numpy==2.5.4
+pillow==13.0.0
+# bpy's dependencies
+attrs==26.1.0
+cattrs==26.2.1
+certifi==2026.10.23
+charset-normalizer==3.5.2
+Cython==3.3.0
+idna==3.20
+requests==2.34.2
+typing_extensions==4.16.0
+urllib3==2.8.0
+zstandard==0.25.0

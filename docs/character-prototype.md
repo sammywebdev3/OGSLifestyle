@@ -306,16 +306,15 @@ None of this needs a database change until step 6.
 
 ## 9. How to reproduce
 
-Character pipeline (needs Python 3.13 with `bpy` 5.x and Pillow in the same environment; Pillow + numpy for packing):
+Character pipeline: set up with `bash tools/character-pipeline/setup.sh` (pinned packages and pinned CC0 asset
+commits; see `tools/character-pipeline/README.md`), then:
 
 ```sh
-git clone --depth 1 https://github.com/makehumancommunity/makehuman.git mh      # CC0 data in makehuman/data
-git clone --depth 1 https://github.com/makehumancommunity/mpfb2.git            # CC0 rig in src/mpfb/data
-export MH_DATA=$PWD/mh/makehuman/data MPFB_DATA=$PWD/mpfb2/src/mpfb/data OUT_DIR=$PWD/out
+source ~/.cache/ogs-character-pipeline/env.sh
 cd tools/character-pipeline
-python turnaround.py -- femi            # front / three-quarter / side / back / head (RS=0.7 VIEWS=front,three for a preview)
-SAMPLES=16 python sprites.py -- femi    # 96 isometric frames (about 4-19 min per character on 4 CPU cores)
-python3 atlas.py $OUT_DIR/femi-frames femi ../../public/prototype-characters   # femi-hd/sd .webp + .json
+$PY turnaround.py -- femi            # front / three-quarter / side / back / head (RS=0.7 VIEWS=front,three for a preview)
+SAMPLES=16 $PY sprites.py -- femi    # 96 isometric frames (about 4-19 min per character on 4 CPU cores)
+$PY atlas.py $OUT_DIR/femi-frames femi ../../public/prototype-characters   # femi-hd/sd .webp + .json
 ```
 
 Building one character takes 1–3 minutes (garment simulation included). Milestone 1 adds layered renders
