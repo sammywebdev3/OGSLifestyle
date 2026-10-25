@@ -159,11 +159,15 @@ The cost of layering:
 - **Memory.** One layered look alone uses about 30% more memory than its baked atlas (9.5 MB vs 7.3 MB HD), because
   layers overlap. Sharing pays back once a body is used with two or more looks.
 
-Known limitation: the body layer is rendered with skin masked under the outfit used to render it. That is the
-jersey here, which is why the longer senator kaftan works. An outfit that shows more skin than the masking outfit
-would expose holes. The fix for production is to render the body layer with a minimal mask (underwear coverage) once
-per body. That is the plan in section 9. The existing painted avatar options, the avatar picker and the save format
-are unchanged.
+**Correction (2026-10-25).** An earlier version of this report said the body layer is masked under the outfit it
+was rendered with. That is wrong. The milestone-1 code renders the body layer as **the whole, unmasked skin**: in
+`sprites.py`, the body pass turns the `Covered` mask off. The mask is kept only on the hidden holdout copy used to
+cut the outfit and hair passes, and that copy matches each outfit.
+
+So an outfit that shows more skin cannot open holes in the body layer. What the body layer still lacks is neutral
+base clothing: under an outfit's gaps it is a nude body. Adding that base, and an automated layered-vs-baked gap check
+over more outfit combinations, is the next character task. The existing painted avatar options, the avatar
+picker and the save format are unchanged.
 
 ## 7. Atlases
 
@@ -236,7 +240,7 @@ What this shows:
    - a low-end Android phone (2–3 GB) and a mid-range one (4–6 GB);
    - load time on 4G and 3G, frame time with 5 and 20 characters, and memory in Chrome remote debugging;
    - confirm that SD looks acceptable at true size.
-2. **Body layer with a minimal mask**, so any outfit works on any body (section 6).
+2. **Neutral base clothing in the body layer**, and an automated gap and seam check for more outfit combinations (section 6).
 3. **Character configurations** `{ body, outfit, hair }`:
    - each maps to layer atlases;
    - saved alongside today's `AvatarSelection`;
@@ -247,9 +251,63 @@ What this shows:
 5. **Pipeline throughput.** A full character takes 4–19 min on 4 CPU cores and a layer set about 26 min. A GPU render machine
    would cut this by about 10×.
 
+## 10. Repeatable tests and performance traces (added 2026-10-25)
+
+The scratch scripts used for sections 3 and 8 are now in the repository. Nothing here contacts Supabase or any other
+service:
+
+- The test builds get empty Supabase settings, so the app runs in offline guest mode.
+- Every request that leaves localhost is blocked and fails the test.
+
+| Command | What it runs |
+| --- | --- |
+| `npm run test:lab` | Builds the lab version and runs `tests/lab/*.spec.ts` on a desktop and an emulated phone viewport, then builds a **normal** version and runs the flag-off check. |
+| `npm run test:lab:perf` | Builds the lab version and records a Chrome performance trace and measurements for 8 scenarios into `test-results/lab-perf/` (`*.trace.json` opens in DevTools → Performance; `summary.md`). |
+
+`npm run test:lab` covers:
+
+- **Atlas selection:** 8 cases on desktop and phone. `deviceMemory` 8/6 → HD, 4/2 → SD, not reported → HD;
+  `?labq=hd|sd` overrides it; an unknown `?labq` is ignored; only one quality is ever downloaded.
+- **Loading:**
+  - every character is drawn from its atlases, and the local player's atlas is requested first;
+  - all layers show the same, valid frame;
+  - the painted comparison downloads nothing;
+  - walking works, and the player never stands on a blocked tile.
+- **Sharing:** with 22 characters and layered looks, each atlas file is requested once, there is one texture per atlas,
+  and at least 6 characters draw from the shared body atlas.
+- **Failure:** if an atlas download fails, the world and the other characters carry on, the affected character stays a
+  placeholder with its name tag, and the player can still move.
+- **Flag off:** a normal build opened with every lab parameter makes 0 atlas requests, has no `window.__oslLab` and logs no
+  errors. I ran this check against a lab build to make sure it isn't vacuous: it fails there, with 92 atlas requests.
+
+Results on 2026-10-25: **24/24 lab tests and 1/1 flag-off test passed.**
+
+`npm run test:lab:perf` on 2026-10-25. **Simulated:** headless Chromium with SwiftShader on 4 CPU cores (Xeon 2.1 GHz),
+16 GB RAM. Phone rows emulate the viewport and `deviceMemory` only.
+
+| Scenario | Quality | Characters | World ready | All drawn | FPS* | Frame median / p95 | Long tasks† | JS heap | Textures (all / characters) | Atlas download |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| desktop, painted | – | 5 | 1808 ms | 2176 ms | 12.6 | 2.9 / 5.6 ms | 110 | 10.5 MB | 15.7 / 0 MB | 0 |
+| desktop, 3D | HD | 5 | 1960 ms | 2697 ms | 13.1 | 2.8 / 4.2 ms | 120 | 13.0 MB | 38.9 / 24.3 MB | 1938 KB |
+| phone, painted | – | 5 | 1947 ms | 2152 ms | 27.1 | 2.8 / 4.1 ms | 7 | 14.6 MB | 22.8 / 0 MB | 0 |
+| phone, 3D, 2 GB | SD | 5 | 2046 ms | 2520 ms | 26.8 | 2.7 / 4.9 ms | 7 | 13.2 MB | 31.5 / 9.7 MB | 983 KB |
+| phone, 3D, 8 GB | HD | 5 | 1985 ms | 2519 ms | 28.0 | 2.6 / 4.1 ms | 7 | 11.6 MB | 46.1 / 24.3 MB | 1938 KB |
+| phone, painted | – | 21 | 1932 ms | 2212 ms | 19.5 | 8.7 / 12.4 ms | 87 | 10.6 MB | 22.8 / 0 MB | 0 |
+| phone, 3D + layered, 2 GB | SD | 21 | 2065 ms | 2995 ms | 19.3 | 8.3 / 12.9 ms | 109 | 16.2 MB | 37.7 / 15.9 MB | 1693 KB |
+| phone, 3D + layered, 8 GB | HD | 21 | 2021 ms | 3038 ms | 18.6 | 8.3 / 13.0 ms | 108 | 16.1 MB | 62.3 / 40.5 MB | 3266 KB |
+
+\* Software rendering on the CPU. Compare rows with each other, not with a phone.
+† Main-thread tasks over 50 ms in the trace. With SwiftShader, rasterising each frame on the CPU produces most of
+them, which is why there are many more on the large desktop viewport. Painted and 3D are the same within noise.
+
+The atlas download sizes include the JSON files.
+
+The conclusions match section 8: frame cost is unchanged, memory is the cost, and the world does not wait for atlases.
+**Real Android measurements: none yet.** The steps are in [`android-test-checklist.md`](android-test-checklist.md).
+
 ## How to reproduce
 
-See `docs/character-prototype.md` § 9. Milestone 1 additions:
+The pipeline is set up with `tools/character-pipeline/setup.sh` (see its README.md). Milestone 1 additions:
 
 ```sh
 LAYERS=body,outfit,hair python sprites.py -- tunde            # layered: body-tunde, outfit-tunde.tunde, hair-fade.tunde
