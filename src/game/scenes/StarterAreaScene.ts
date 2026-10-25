@@ -41,6 +41,10 @@ export interface SceneOptions {
   labCast?: { mix?: boolean; count?: number };
   /** Character lab: how quickly unused character atlases are freed (shorter in tests). */
   labTiming?: LabTiming;
+  /** Character lab, for device testing: an on-screen readout of frame rate and character atlases. */
+  labHud?: boolean;
+  /** Character lab, for device testing: change the local player's outfit every this many seconds. */
+  labCycleSeconds?: number;
 }
 
 type Avatar = PlayerAvatar | LabAvatar;
@@ -73,6 +77,8 @@ export class StarterAreaScene extends Phaser.Scene {
   private labLoader: LabAtlasLoader | null = null;
   /** Character lab: the player's atlases, held from preload until the player's avatar holds them itself. */
   private labPreload: readonly string[] = [];
+  private labHud: Phaser.GameObjects.Text | null = null;
+  private labHudClock = 0;
   private pos = { ...SPAWN };
   private isBlocked = isBlockedFn(buildBlockedSet());
   private keys!: Record<'up' | 'down' | 'left' | 'right' | 'w' | 'a' | 's' | 'd' | 'e' | 'space' | 'enter', Phaser.Input.Keyboard.Key>;
@@ -155,6 +161,7 @@ export class StarterAreaScene extends Phaser.Scene {
     this.labPreload = [];
     this.placePlayer();
     if (this.opts.characterLab) this.addDemoWalkers();
+    if (this.opts.characterLab === '3d') this.addLabTestAids();
 
     // Camera: follow the player within the map (plus a margin of outskirts).
     this.cameras.main.setBounds(this.view.x, this.view.y, this.view.w, this.view.h);
@@ -335,6 +342,51 @@ export class StarterAreaScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * Character lab, for testing on phones without a cable: ?labhud=1 shows frame rate, atlas quality, characters
+   * drawn, character texture memory and atlas loads/unloads/failures in a corner; ?labcycle=N changes the local
+   * player's outfit every N seconds (through the same AvatarSelection path as a real outfit change).
+   */
+  private addLabTestAids() {
+    if (this.opts.labHud) {
+      this.labHud = this.add.text(8, 8, '', { fontFamily: 'monospace', fontSize: '11px', color: '#ffffff', backgroundColor: '#000000aa', padding: { x: 4, y: 3 } })
+        .setScrollFactor(0).setDepth(1e9);
+    }
+    const every = this.opts.labCycleSeconds;
+    if (every && every > 0) {
+      const wardrobe: AvatarSelection[] = [
+        { ...this.opts.avatar, body: 'masc', skin: 'deep', headwear: 'none', outfit: 'adire' },
+        { ...this.opts.avatar, body: 'masc', skin: 'deep', headwear: 'fila', outfit: 'palm' },
+        { ...this.opts.avatar, body: 'femme', skin: 'deep', headwear: 'none', outfit: 'ink' },
+        { ...this.opts.avatar, body: 'femme', skin: 'deep', headwear: 'braids', outfit: 'adire' },
+        this.opts.avatar,
+      ];
+      let i = 0;
+      this.time.addEvent({ delay: every * 1000, loop: true, callback: () => this.labSetAppearance('self', wardrobe[i++ % wardrobe.length]!) });
+    }
+  }
+
+  private updateLabHud(deltaMs: number) {
+    this.labHudClock += deltaMs;
+    if (this.labHudClock < 500 || !this.labHud || !this.labLoader) return;
+    this.labHudClock = 0;
+    const avatars = [this.player, ...[...this.remotes.values()].map((r) => r.avatar)];
+    const drawn = avatars.filter((a) => !(a instanceof LabAvatar) || a.loaded).length;
+    let bytes = 0; let count = 0;
+    for (const key of this.textures.getTextureKeys()) {
+      if (!key.startsWith('lab-')) continue;
+      const src = this.textures.get(key).source[0];
+      if (src) { bytes += src.width * src.height * 4; count++; }
+    }
+    const st = this.labLoader.stats;
+    this.labHud.setText([
+      `fps ${this.game.loop.actualFps.toFixed(0)}  q ${this.opts.labQuality ?? 'hd'}`,
+      `drawn ${drawn}/${avatars.length}`,
+      `atlases ${count}  ${(bytes / 1048576).toFixed(1)} MB`,
+      `loads ${st.loads} unloads ${st.unloads} fail ${st.failures}`,
+    ]);
+  }
+
   private placePlayer() {
     const s = gridToScreen(this.pos.x, this.pos.y);
     this.player.container.setPosition(s.x, s.y).setDepth(this.characterDepthAt(this.pos.x, this.pos.y, s.x, s.y));
@@ -476,6 +528,7 @@ export class StarterAreaScene extends Phaser.Scene {
     this.updateProximity();
     this.updatePlotLabels();
     this.checkInteractions();
+    if (this.labHud) this.updateLabHud(deltaMs);
   }
 
   /** Plot tags show just the number from afar, and the number with the status when you are close. */

@@ -31,11 +31,14 @@ export async function createGame(parent: HTMLElement, opts: { avatar: AvatarSele
     render: { antialias: true, roundPixels: false, powerPreference: 'high-performance' },
     callbacks: { preBoot: (g) => { g.registry.set('renderScale', rs); } },
     // Character lab only (ignored unless opts.characterLab is set): ?labq=hd|sd forces the atlas quality, and
-    // ?labgc=fast frees unused character atlases within a second (for the browser tests).
+    // ?labgc=fast frees unused character atlases within a second (for the browser tests); ?labhud=1 and
+    // ?labcycle=N are device-testing aids (see docs/android-test-checklist.md).
     scene: new StarterAreaScene({
       ...opts,
       labQuality: labQuality(nav.deviceMemory, query.get('labq')),
       labTiming: query.get('labgc') === 'fast' ? { unloadDelayMs: 600, releaseAfterMs: 300 } : undefined,
+      labHud: query.get('labhud') === '1',
+      labCycleSeconds: Number(query.get('labcycle')) || undefined,
     }),
   });
   // Character lab test builds only: lets the measurement harness read frame timings.

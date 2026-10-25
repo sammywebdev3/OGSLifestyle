@@ -28,6 +28,7 @@ export class AtlasRefs {
   private readonly refs = new Map<string, number>();
   private readonly state = new Map<string, AtlasState>();
   private readonly timers = new Map<string, unknown>();
+  private readonly counts = new Map<string, { loads: number; unloads: number }>();
   private readonly store: AtlasStore;
   private readonly scheduler: Scheduler;
   private readonly unloadDelayMs: number;
@@ -48,6 +49,7 @@ export class AtlasRefs {
       if (s === 'idle' || s === 'failed') {
         this.state.set(key, 'loading');
         this.stats.loads++;
+        this.tally(key).loads++;
         this.store.load(key);
       }
     }
@@ -87,11 +89,17 @@ export class AtlasRefs {
     return keys.every((k) => this.stateOf(k) === 'loaded');
   }
 
-  /** Atlases currently loaded, with their reference counts (for tests and diagnostics). */
-  snapshot(): Record<string, { refs: number; state: AtlasState }> {
-    const out: Record<string, { refs: number; state: AtlasState }> = {};
-    for (const [key, state] of this.state) out[key] = { refs: this.count(key), state };
+  /** Every atlas seen so far: references, state, and how often it was loaded and freed (tests, diagnostics). */
+  snapshot(): Record<string, { refs: number; state: AtlasState; loads: number; unloads: number }> {
+    const out: Record<string, { refs: number; state: AtlasState; loads: number; unloads: number }> = {};
+    for (const [key, state] of this.state) out[key] = { refs: this.count(key), state, ...this.tally(key) };
     return out;
+  }
+
+  private tally(key: string) {
+    let t = this.counts.get(key);
+    if (!t) this.counts.set(key, (t = { loads: 0, unloads: 0 }));
+    return t;
   }
 
   private scheduleUnload(key: string) {
@@ -101,11 +109,15 @@ export class AtlasRefs {
       // Re-check at the last moment: a reference may have come back, or something may still draw from it.
       if (this.count(key) > 0 || this.stateOf(key) !== 'loaded') return;
       if (this.store.inUse(key)) {
+        // Something still draws from it without a reference: never free it under that, but look again later so
+        // the texture is not kept for ever once it is really unused.
         this.stats.skippedUnloads++;
+        this.scheduleUnload(key);
         return;
       }
       this.state.set(key, 'idle');
       this.stats.unloads++;
+      this.tally(key).unloads++;
       this.store.unload(key);
     }, this.unloadDelayMs));
   }

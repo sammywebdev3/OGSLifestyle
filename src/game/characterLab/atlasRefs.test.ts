@@ -73,7 +73,24 @@ test('atlas refs: an atlas still drawn from is never freed, even with no referen
   refs.release(['tunde']);
   advance(1000);
   assert.ok(!log.includes('unload tunde'));
-  assert.equal(refs.stats.skippedUnloads, 1);
+  assert.ok(refs.stats.skippedUnloads >= 1);
+  // Once nothing draws from it any more, the next check frees it.
+  using.delete('tunde');
+  advance(100);
+  assert.ok(log.includes('unload tunde'));
+});
+
+test('atlas refs: switching back and forth faster than loads finish never loads anything twice', () => {
+  const { refs, log, advance } = setup(100);
+  const a = ['body', 'outfit-a']; const b = ['body', 'outfit-b'];
+  refs.acquire(a);
+  for (let i = 0; i < 20; i++) { refs.acquire(b); refs.release(a); refs.acquire(a); refs.release(b); }
+  ['body', 'outfit-a', 'outfit-b'].forEach((k) => refs.loaded(k));
+  advance(1000);
+  assert.deepEqual(log.filter((l) => l.startsWith('load')).sort(), ['load body', 'load outfit-a', 'load outfit-b']);
+  assert.deepEqual(log.filter((l) => l.startsWith('unload')), ['unload outfit-b']); // only what nobody holds
+  assert.equal(refs.count('body'), 1);
+  assert.equal(refs.count('outfit-a'), 1);
 });
 
 test('atlas refs: released while still loading, it is freed after it arrives; extra releases are ignored', () => {
