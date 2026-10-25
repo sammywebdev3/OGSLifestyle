@@ -11,7 +11,8 @@ feet, the pelvis and the top of the head land in each direction and frame (check
 The walk and idle cycles are authored here (procedural keyframes on the game_engine rig), not motion capture.
 
 Usage:  python sprites.py -- <body> [outfit] [hair]          (env MH_DATA, MPFB_DATA, OUT_DIR, SAMPLES, ONLY, LAYERS)
-LAYERS: 'full' (default: the whole character in one image) or any of body,outfit,hair. Layers are rendered with the
+LAYERS: 'full' (default: the whole character in one image) or any of body,outfit,hair (and 'base': only the neutral
+base clothing of the body layer, for check_layers.py --base). Layers are rendered with the
 other parts as holdouts, so the game can stack body + outfit + hair (in that order) and get the same picture, and
 mix any outfit or hairstyle with any body of the same build without rendering every combination.
 
@@ -157,7 +158,7 @@ def project(cam, p):
 def setup_layer(h, layer):
     """Show, hide or hold out objects for one render pass: 'full', 'body', 'outfit' or 'hair'."""
     body = h['body']
-    outfit, hair_obs = h['outfit_objects'], h['hair_objects']
+    outfit, hair_obs, base = h['outfit_objects'], h['hair_objects'], h.get('base_objects', [])
     holdout = h.get('holdout')
     if holdout is None and layer != 'full':
         holdout = body.copy()                         # shares the mesh; no hair systems; the clothes mask stays
@@ -175,6 +176,7 @@ def setup_layer(h, layer):
             ob.is_holdout = hold
     systems = {m.name: m for m in body.modifiers if m.type == 'PARTICLE_SYSTEM'}
     mask = body.modifiers.get('Covered')
+    show(base, layer == 'body')
     if layer == 'full':
         show([body, h['eyes'], h['lashes'], plane] + outfit + hair_obs)
         if holdout is not None:
@@ -185,9 +187,13 @@ def setup_layer(h, layer):
         if mask:
             mask.show_render = True
         return
-    show([holdout], layer in ('outfit', 'hair'), hold=True)
+    show([holdout], layer in ('outfit', 'hair', 'base'), hold=True)
+    hold_mask = holdout.modifiers.get('Covered')
+    if hold_mask:
+        hold_mask.show_render = layer != 'base'  # the base is drawn over the whole (unmasked) skin, as in 'body'
     if layer == 'body':
-        # The whole skin (also under the clothes) and the face hair (brows, beard): the character's identity.
+        # The whole skin (also under the clothes: no holes whatever the outfit exposes), the neutral base clothing
+        # and the face hair (brows, beard): the character's identity.
         show([body, h['eyes'], h['lashes']])
         show(outfit + hair_obs + [plane], False)
         if mask:
@@ -195,6 +201,13 @@ def setup_layer(h, layer):
         body.show_instancer_for_render = True
         for name, m in systems.items():
             m.show_render = name in characters.FACE_SYSTEMS
+    elif layer == 'base':
+        # Validation only (check_layers.py --base): where the neutral base clothing of the body layer shows.
+        show(base)
+        show([body, h['eyes'], h['lashes'], plane] + outfit + hair_obs, False)
+        body.show_instancer_for_render = False
+        for m in systems.values():
+            m.show_render = False
     elif layer == 'outfit':
         # Clothes, shoes and accessories, cut where the body is in front of them; the ground shadow lives here.
         show(outfit + [plane])
@@ -212,7 +225,7 @@ def layer_tag(layer, config, default):
     body, outfit, hair = config['body'], config['outfit'], config['hair']
     if layer == 'full':
         return body if default else f'{body}+{outfit}+{hair}'
-    return {'body': f'body-{body}', 'outfit': f'outfit-{outfit}.{body}', 'hair': f'hair-{hair}.{body}'}[layer]
+    return {'body': f'body-{body}', 'outfit': f'outfit-{outfit}.{body}', 'hair': f'hair-{hair}.{body}', 'base': f'base-{body}'}[layer]
 
 
 def main():
@@ -238,6 +251,8 @@ def main():
                 st = m.particle_system.settings
                 st.rendered_child_count = max(2, st.rendered_child_count // 3)
                 st.root_radius *= 1.5
+    if 'body' in layers or 'base' in layers:
+        h['base_objects'] = characters.base_clothes(h)
     sc = studio.setup_render(samples, (FW * RES * SUPER, FH * RES * SUPER))
     sc.render.use_persistent_data = True
     lights = world_lighting()

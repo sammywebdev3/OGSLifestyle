@@ -65,6 +65,10 @@ SAMPLES=16 $PY sprites.py -- femi                             # 96 frames + femi
 LAYERS=body,outfit,hair SAMPLES=16 $PY sprites.py -- tunde    # layered: body-tunde, outfit-tunde.tunde, hair-fade.tunde
 LAYERS=outfit $PY sprites.py -- tunde femi fade               # Femi's outfit fitted to Tunde's body
 $PY check_anchors.py $OUT_DIR/*-anchors.json                  # must print OK for every file
+# layered vs baked, frame by frame, all 8 directions: gaps, clipping, seams (heatmap of the worst frames)
+$PY check_layers.py --baked $OUT_DIR/tunde-frames \
+    --layers $OUT_DIR/body-tunde-frames $OUT_DIR/outfit-tunde.tunde-frames $OUT_DIR/hair-fade.tunde-frames \
+    --anchors $OUT_DIR/tunde-anchors.json --json tunde-layers.json --heatmap tunde-layers.png
 $PY atlas.py $OUT_DIR/femi-frames femi ../../public/prototype-characters
 ```
 
@@ -75,6 +79,28 @@ Times on 4 CPU cores:
 | Building one character, including the cloth simulation | 1–3 min |
 | Full sprite set | 4–19 min per character |
 | A set of three layers | about 26 min |
+
+## Layers and the base body
+
+`LAYERS=body` renders:
+
+- the whole skin, unmasked, so an outfit that shows more skin never opens a hole;
+- the face hair;
+- neutral **base clothing** (`characters.base_clothes`): grey knit shorts, plus a sports top for female bodies.
+
+The base clothing is cut from the body mesh itself, so it deforms with exactly the same weights. Its top edge stays
+below the lowest neckline of any outfit, and it is drawn only in the body layer. Outfit and hair layers are drawn
+over it.
+
+`check_layers.py` composites the layers and compares them with a baked render of the same configuration. For
+every frame and region (head and neck, shoulders and arms, waist and hands, legs, feet) it flags:
+
+- **holes:** the baked render is opaque and the stack transparent;
+- **extra coverage:** the stack sticks out (clipping);
+- **colour seams:** the colours differ a lot.
+
+A frame fails when a flagged blob is larger than the limit. Skin that the *baked* render had masked away (a dress
+slit opening while walking) is reported separately. In that case the stack is right and the baked frame has the gap.
 
 ## Updating a pinned dependency
 
