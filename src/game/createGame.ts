@@ -6,15 +6,17 @@
 import type { AvatarSelection } from '@/types/player';
 import type { GameBus } from './events';
 import { renderScale } from './render/viewport';
+import { labQuality } from './characterLab/prototype';
 
 export interface GameHandle {
   destroy(): void;
 }
 
-export async function createGame(parent: HTMLElement, opts: { avatar: AvatarSelection; characterName: string; bus: GameBus }): Promise<GameHandle> {
+export async function createGame(parent: HTMLElement, opts: { avatar: AvatarSelection; characterName: string; bus: GameBus; characterLab?: '3d' | 'painted'; labCast?: { mix?: boolean; count?: number }; exposeForTests?: boolean }): Promise<GameHandle> {
   if (typeof window === 'undefined') throw new Error('createGame() must run in the browser');
   const [Phaser, { StarterAreaScene }] = await Promise.all([import('phaser'), import('./scenes/StarterAreaScene')]);
   const nav = navigator as Navigator & { deviceMemory?: number };
+  const query = new URLSearchParams(window.location.search);
   // Render at the device's pixel density (capped), then show the canvas at CSS size: sharp on phones.
   const rs = renderScale(window.devicePixelRatio, nav.hardwareConcurrency, nav.deviceMemory);
   const cssSize = () => ({ w: Math.max(1, parent.clientWidth || 800), h: Math.max(1, parent.clientHeight || 600) });
@@ -28,8 +30,19 @@ export async function createGame(parent: HTMLElement, opts: { avatar: AvatarSele
     scale: { mode: Phaser.Scale.NONE, width: start.w * rs, height: start.h * rs, zoom: 1 / rs },
     render: { antialias: true, roundPixels: false, powerPreference: 'high-performance' },
     callbacks: { preBoot: (g) => { g.registry.set('renderScale', rs); } },
-    scene: new StarterAreaScene(opts),
+    // Character lab only (ignored unless opts.characterLab is set): ?labq=hd|sd forces the atlas quality, and
+    // ?labgc=fast frees unused character atlases within a second (for the browser tests); ?labhud=1 and
+    // ?labcycle=N are device-testing aids (see docs/android-test-checklist.md).
+    scene: new StarterAreaScene({
+      ...opts,
+      labQuality: labQuality(nav.deviceMemory, query.get('labq')),
+      labTiming: query.get('labgc') === 'fast' ? { unloadDelayMs: 600, releaseAfterMs: 300 } : undefined,
+      labHud: query.get('labhud') === '1',
+      labCycleSeconds: Number(query.get('labcycle')) || undefined,
+    }),
   });
+  // Character lab test builds only: lets the measurement harness read frame timings.
+  if (opts.exposeForTests) (window as unknown as { __oslLab?: unknown }).__oslLab = game;
   const observer = new ResizeObserver(() => {
     const { w, h } = cssSize();
     if (Math.floor(w * rs) !== game.scale.width || Math.floor(h * rs) !== game.scale.height) game.scale.resize(w * rs, h * rs);

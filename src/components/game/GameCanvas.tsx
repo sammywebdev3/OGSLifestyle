@@ -5,6 +5,23 @@ import type { AvatarSelection } from '@/types/player';
 import type { GameBus } from '@/game/events';
 import { Spinner } from '@/components/ui/Spinner';
 
+/** Character lab (prototype 3D characters) test builds: made with NEXT_PUBLIC_CHARACTER_LAB=1. Never set for production. */
+const LAB_BUILD = process.env.NEXT_PUBLIC_CHARACTER_LAB === '1';
+
+/** In a lab build, ?lab=characters shows the 3D characters and ?lab=painted the same scene with today's characters. */
+function characterLab(): '3d' | 'painted' | undefined {
+  if (!LAB_BUILD) return undefined;
+  const lab = new URLSearchParams(window.location.search).get('lab');
+  return lab === 'characters' ? '3d' : lab === 'painted' ? 'painted' : undefined;
+}
+
+/** In a lab build: ?labmix=1 adds the layered looks to the cast, ?labn=N repeats the cast up to N walkers. */
+function labCast(): { mix?: boolean; count?: number } | undefined {
+  if (!LAB_BUILD) return undefined;
+  const q = new URLSearchParams(window.location.search);
+  return { mix: q.get('labmix') === '1', count: Number(q.get('labn')) || undefined };
+}
+
 /**
  * Hosts the Phaser canvas. Phaser is imported inside useEffect, so it is never
  * evaluated during server rendering. Cleans up the game on unmount.
@@ -18,7 +35,7 @@ export default function GameCanvas({ avatar, characterName, bus }: { avatar: Ava
     let handle: { destroy(): void } | null = null;
     const offReady = bus.world.on('ready', () => !cancelled && setState('ready'));
     import('@/game/createGame')
-      .then(({ createGame }) => (hostRef.current && !cancelled ? createGame(hostRef.current, { avatar, characterName, bus }) : null))
+      .then(({ createGame }) => (hostRef.current && !cancelled ? createGame(hostRef.current, { avatar, characterName, bus, characterLab: characterLab(), labCast: labCast(), exposeForTests: LAB_BUILD }) : null))
       .then((h) => {
         if (cancelled) h?.destroy();
         else handle = h;

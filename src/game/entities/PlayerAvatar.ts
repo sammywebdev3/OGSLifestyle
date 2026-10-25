@@ -6,6 +6,19 @@ import { RES } from '../art/canvasIso';
 /** Height of the name tag's bottom edge above the feet (px). */
 export const NAME_TAG_LIFT = 64;
 
+/** The rounded name tag above a character (other players' tags are green, yours is indigo). */
+export function addNameTag(scene: Phaser.Scene, name: string, remote: boolean): Phaser.GameObjects.Container {
+  const label = scene.add.text(0, 0, name, {
+    fontFamily: '"Trebuchet MS", "Segoe UI", sans-serif', fontSize: '10px', fontStyle: 'bold', color: '#fff6e5', resolution: 2,
+  }).setOrigin(0.5, 0.5);
+  const w = Math.ceil(label.width) + 12; const h = 15;
+  const tag = scene.add.graphics();
+  tag.fillStyle(0x000000, 0.2); tag.fillRoundedRect(-w / 2 + 1, -h / 2 + 1.5, w, h, 7.5);
+  tag.fillStyle(remote ? 0x0e7a4b : 0x1f2f6b, 0.92); tag.fillRoundedRect(-w / 2, -h / 2, w, h, 7.5);
+  tag.lineStyle(1, remote ? 0x2fb36f : 0x8d9be0, 0.9); tag.strokeRoundedRect(-w / 2, -h / 2, w, h, 7.5);
+  return scene.add.container(0, -NAME_TAG_LIFT - h / 2, [tag, label]);
+}
+
 /**
  * A character in the world: a painted sprite sheet (walk and idle animations) with a soft shadow
  * and a name tag. Other players' tags are green, yours is indigo.
@@ -24,16 +37,7 @@ export class PlayerAvatar {
       .setOrigin(AVATAR_FRAME.ax / AVATAR_FRAME.w, AVATAR_FRAME.ay / AVATAR_FRAME.h).setScale(1 / RES);
     this.sprite.play(`${this.key}-idle`);
 
-    const label = scene.add.text(0, 0, name, {
-      fontFamily: '"Trebuchet MS", "Segoe UI", sans-serif', fontSize: '10px', fontStyle: 'bold', color: '#fff6e5', resolution: 2,
-    }).setOrigin(0.5, 0.5);
-    const w = Math.ceil(label.width) + 12; const h = 15;
-    const tag = scene.add.graphics();
-    tag.fillStyle(0x000000, 0.2); tag.fillRoundedRect(-w / 2 + 1, -h / 2 + 1.5, w, h, 7.5);
-    tag.fillStyle(opts.remote ? 0x0e7a4b : 0x1f2f6b, 0.92); tag.fillRoundedRect(-w / 2, -h / 2, w, h, 7.5);
-    tag.lineStyle(1, opts.remote ? 0x2fb36f : 0x8d9be0, 0.9); tag.strokeRoundedRect(-w / 2, -h / 2, w, h, 7.5);
-    const nameTag = scene.add.container(0, -NAME_TAG_LIFT - h / 2, [tag, label]);
-
+    const nameTag = addNameTag(scene, name, opts.remote ?? false);
     this.container = scene.add.container(0, 0, [shadow, this.sprite, nameTag]);
   }
 
@@ -47,7 +51,7 @@ export class PlayerAvatar {
   }
 
   /** Call every frame with whether the character moved and the horizontal screen direction. */
-  animate(_dt: number, moving: boolean, screenDx: number) {
+  animate(_dt: number, moving: boolean, screenDx: number, _screenDy = 0) {
     if (moving !== this.walking) {
       this.walking = moving;
       this.sprite.play(`${this.key}-${moving ? 'walk' : 'idle'}`);

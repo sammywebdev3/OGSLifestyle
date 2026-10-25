@@ -14,6 +14,12 @@ import { baseZoom } from '../render/viewport';
 import { PLOT_TARGET_PREFIX } from '@/features/land/plots';
 import { fillPoly, isoPoint, strokePoly } from '../render/isoDraw';
 import { PlayerAvatar, NAME_TAG_LIFT } from '../entities/PlayerAvatar';
+import { LabAvatar } from '../characterLab/LabAvatar';
+import { DemoWalker } from '../characterLab/demoWalker';
+import type { LabQuality } from '../characterLab/prototype';
+import { LabAtlasLoader, type LabTiming } from '../characterLab/atlasLoader';
+import { appearanceFor, resolveLook, type CharacterAppearance } from '../characterLab/appearance';
+import { demoCast } from '../characterLab/demoCast';
 import { RES } from '../art/canvasIso';
 import { GROUND_KEY, GROUND_OFFSET, installGround } from '../art/groundArt';
 import { OUTSKIRTS, groundFrame, insideMap } from '../art/groundLayout';
@@ -24,13 +30,30 @@ export interface SceneOptions {
   avatar: AvatarSelection;
   characterName: string;
   bus: GameBus;
+  /**
+   * Character lab (prototype, off unless enabled for a test build): '3d' draws everyone with the pre-rendered
+   * 3D characters, 'painted' keeps the current characters; both add the same scripted walkers, for comparison.
+   */
+  characterLab?: '3d' | 'painted';
+  /** Character lab atlas quality ('sd' for low-memory phones). */
+  labQuality?: LabQuality;
+  /** Character lab cast: add the layered mixes, and/or repeat the cast up to `count` walkers (stress tests). */
+  labCast?: { mix?: boolean; count?: number };
+  /** Character lab: how quickly unused character atlases are freed (shorter in tests). */
+  labTiming?: LabTiming;
+  /** Character lab, for device testing: an on-screen readout of frame rate and character atlases. */
+  labHud?: boolean;
+  /** Character lab, for device testing: change the local player's outfit every this many seconds. */
+  labCycleSeconds?: number;
 }
+
+type Avatar = PlayerAvatar | LabAvatar;
 
 const SPEED = 3.4; // tiles per second
 const RADIUS = 0.28; // player collision radius in tiles
 
 /** Another player's character: drawn from multiplayer updates, never controlled locally. */
-interface RemoteAvatar { name: string; avatar: PlayerAvatar; motion: Smoother; facing: LocalPlayerState['facing']; moving: boolean }
+interface RemoteAvatar { name: string; avatar: Avatar; motion: Smoother; facing: LocalPlayerState['facing']; moving: boolean }
 
 /** Speech/emote bubble drawn above a character ("self" = the local player). */
 interface BubbleView { container: Phaser.GameObjects.Container; width: number; height: number }
@@ -49,7 +72,13 @@ const PLOT_STYLE: Record<PlotView['status'], { fill: string; line: string; tag: 
 /** Kuto street corner: floor, buildings, props, a controllable player and interaction spots. */
 export class StarterAreaScene extends Phaser.Scene {
   private opts: SceneOptions;
-  private player!: PlayerAvatar;
+  private player!: Avatar;
+  private demoWalkers = new Map<string, DemoWalker>();
+  private labLoader: LabAtlasLoader | null = null;
+  /** Character lab: the player's atlases, held from preload until the player's avatar holds them itself. */
+  private labPreload: readonly string[] = [];
+  private labHud: Phaser.GameObjects.Text | null = null;
+  private labHudClock = 0;
   private pos = { ...SPAWN };
   private isBlocked = isBlockedFn(buildBlockedSet());
   private keys!: Record<'up' | 'down' | 'left' | 'right' | 'w' | 'a' | 's' | 'd' | 'e' | 'space' | 'enter', Phaser.Input.Keyboard.Key>;
@@ -79,6 +108,33 @@ export class StarterAreaScene extends Phaser.Scene {
     this.opts = opts;
   }
 
+  preload() {
+    if (this.opts.characterLab !== '3d') return;
+    // Only the local player's character loads before the world appears; everyone else's loads when they show up.
+    this.labLoader = new LabAtlasLoader(this, this.opts.labQuality ?? 'hd', this.opts.labTiming);
+    this.labPreload = resolveLook(appearanceFor(this.opts.avatar)).look.atlases;
+    this.labLoader.acquire(this.labPreload);
+  }
+
+  /** The painted character, or in the character lab the pre-rendered 3D one (local and remote alike). */
+  /** Local and remote players go through the same rule: AvatarSelection -> appearance -> atlases. */
+  private makeAvatar(avatar: AvatarSelection, name: string, opts: { remote?: boolean } = {}): Avatar {
+    if (this.opts.characterLab !== '3d' || !this.labLoader) return new PlayerAvatar(this, avatar, name, opts);
+    const { look } = resolveLook(appearanceFor(avatar));
+    return new LabAvatar(this, look, name, { remote: opts.remote, quality: this.opts.labQuality, loader: this.labLoader });
+  }
+
+  /**
+   * Character lab (used by the browser tests): change what a character wears, given as an AvatarSelection (what a
+   * real outfit change would carry) or directly as an appearance. 'self' is the local player.
+   */
+  labSetAppearance(id: string, wear: AvatarSelection | CharacterAppearance): boolean {
+    const avatar = id === 'self' ? this.player : this.remotes.get(id)?.avatar;
+    if (!(avatar instanceof LabAvatar)) return false;
+    avatar.setLook(resolveLook('hair' in wear ? wear : appearanceFor(wear)).look);
+    return true;
+  }
+
   create() {
     // All art is painted once into textures here (no image files to download), then drawn as quads.
     const corners = [gridToScreen(0, 0), gridToScreen(MAP_W, 0), gridToScreen(0, MAP_H), gridToScreen(MAP_W, MAP_H)];
@@ -100,8 +156,12 @@ export class StarterAreaScene extends Phaser.Scene {
     this.ranks = staticRanks(this.statics);
     this.statics.forEach((st, i) => st.obj.setDepth(this.ranks[i]!));
 
-    this.player = new PlayerAvatar(this, this.opts.avatar, this.opts.characterName);
+    this.player = this.makeAvatar(this.opts.avatar, this.opts.characterName);
+    this.labLoader?.release(this.labPreload); // the player's avatar holds them now
+    this.labPreload = [];
     this.placePlayer();
+    if (this.opts.characterLab) this.addDemoWalkers();
+    if (this.opts.characterLab === '3d') this.addLabTestAids();
 
     // Camera: follow the player within the map (plus a margin of outskirts).
     this.cameras.main.setBounds(this.view.x, this.view.y, this.view.w, this.view.h);
@@ -263,6 +323,70 @@ export class StarterAreaScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Character lab: the cast strolls around the spawn point, through the remote-player path (never sent anywhere).
+   * In the 'painted' comparison the same cast wears the closest painted look.
+   */
+  private addDemoWalkers() {
+    const cast = demoCast(this.opts.labCast);
+    const offsets: [number, number][] = [[1.2, 0.8], [-1.0, 1.1], [0.6, -1.2], [-0.4, 2.0], [1.8, -0.4], [-1.6, -0.6], [0.2, 1.6]];
+    cast.forEach((m, i) => {
+      let [ox, oy] = offsets[i % offsets.length]!;
+      const ring = 1 + Math.floor(i / offsets.length) * 0.35;
+      ox *= ring; oy *= ring;
+      // Start on a free tile near the planned spot.
+      for (let t = 0; t < 12 && this.isBlocked(Math.floor(SPAWN.x + ox), Math.floor(SPAWN.y + oy)); t++) { ox *= 0.8; oy *= 0.8; }
+      const x = SPAWN.x + ox; const y = SPAWN.y + oy;
+      this.demoWalkers.set(m.id, new DemoWalker(x, y, { x: SPAWN.x, y: SPAWN.y }));
+      this.addRemote({ id: m.id, name: m.name, avatar: m.avatar, x, y, facing: 'right', moving: false });
+    });
+  }
+
+  /**
+   * Character lab, for testing on phones without a cable: ?labhud=1 shows frame rate, atlas quality, characters
+   * drawn, character texture memory and atlas loads/unloads/failures in a corner; ?labcycle=N changes the local
+   * player's outfit every N seconds (through the same AvatarSelection path as a real outfit change).
+   */
+  private addLabTestAids() {
+    if (this.opts.labHud) {
+      this.labHud = this.add.text(8, 8, '', { fontFamily: 'monospace', fontSize: '11px', color: '#ffffff', backgroundColor: '#000000aa', padding: { x: 4, y: 3 } })
+        .setScrollFactor(0).setDepth(1e9);
+    }
+    const every = this.opts.labCycleSeconds;
+    if (every && every > 0) {
+      const wardrobe: AvatarSelection[] = [
+        { ...this.opts.avatar, body: 'masc', skin: 'deep', headwear: 'none', outfit: 'adire' },
+        { ...this.opts.avatar, body: 'masc', skin: 'deep', headwear: 'fila', outfit: 'palm' },
+        { ...this.opts.avatar, body: 'femme', skin: 'deep', headwear: 'none', outfit: 'ink' },
+        { ...this.opts.avatar, body: 'femme', skin: 'deep', headwear: 'braids', outfit: 'adire' },
+        this.opts.avatar,
+      ];
+      let i = 0;
+      this.time.addEvent({ delay: every * 1000, loop: true, callback: () => this.labSetAppearance('self', wardrobe[i++ % wardrobe.length]!) });
+    }
+  }
+
+  private updateLabHud(deltaMs: number) {
+    this.labHudClock += deltaMs;
+    if (this.labHudClock < 500 || !this.labHud || !this.labLoader) return;
+    this.labHudClock = 0;
+    const avatars = [this.player, ...[...this.remotes.values()].map((r) => r.avatar)];
+    const drawn = avatars.filter((a) => !(a instanceof LabAvatar) || a.loaded).length;
+    let bytes = 0; let count = 0;
+    for (const key of this.textures.getTextureKeys()) {
+      if (!key.startsWith('lab-')) continue;
+      const src = this.textures.get(key).source[0];
+      if (src) { bytes += src.width * src.height * 4; count++; }
+    }
+    const st = this.labLoader.stats;
+    this.labHud.setText([
+      `fps ${this.game.loop.actualFps.toFixed(0)}  q ${this.opts.labQuality ?? 'hd'}`,
+      `drawn ${drawn}/${avatars.length}`,
+      `atlases ${count}  ${(bytes / 1048576).toFixed(1)} MB`,
+      `loads ${st.loads} unloads ${st.unloads} fail ${st.failures}`,
+    ]);
+  }
+
   private placePlayer() {
     const s = gridToScreen(this.pos.x, this.pos.y);
     this.player.container.setPosition(s.x, s.y).setDepth(this.characterDepthAt(this.pos.x, this.pos.y, s.x, s.y));
@@ -271,7 +395,7 @@ export class StarterAreaScene extends Phaser.Scene {
   /** Show another player. A second join for the same id replaces the old sprite (never duplicates). */
   private addRemote(r: RemotePlayerView) {
     this.removeRemote(r.id);
-    const avatar = new PlayerAvatar(this, r.avatar, r.name, { remote: true });
+    const avatar = this.makeAvatar(r.avatar, r.name, { remote: true });
     avatar.face(r.facing === 'left' ? -1 : 1);
     this.remotes.set(r.id, { name: r.name, avatar, motion: new Smoother(r.x, r.y), facing: r.facing, moving: r.moving });
     this.placeRemote(this.remotes.get(r.id)!);
@@ -361,26 +485,50 @@ export class StarterAreaScene extends Phaser.Scene {
     }
     const dir = screenDirToGrid(dx, dy);
     const moving = dir.x !== 0 || dir.y !== 0;
+    const before = gridToScreen(this.pos.x, this.pos.y);
     if (moving) {
       this.pos = moveWithCollision(this.pos, { x: dir.x * SPEED * dt, y: dir.y * SPEED * dt }, RADIUS, this.isBlocked);
       this.placePlayer();
     }
-    this.player.animate(dt, moving, dx);
+    const after = gridToScreen(this.pos.x, this.pos.y);
+    // Facing comes from the actual screen movement (sliding along a wall faces along the wall).
+    this.player.animate(dt, moving, after.x - before.x || dx, after.y - before.y);
     if (dx !== 0) this.facing = dx < 0 ? 'left' : 'right';
     // Multiplayer reads this every frame and decides itself when to send.
     this.opts.bus.world.emit('player:state', { x: this.pos.x, y: this.pos.y, facing: this.facing, moving });
 
     // Other players: glide towards their last reported position. Their updates never touch this.pos.
+    for (const [id, w] of this.demoWalkers) {
+      const r = this.remotes.get(id);
+      if (!r) continue;
+      const p = w.step(dt, this.isBlocked);
+      const sdx = gridToScreen(p.x, p.y).x - gridToScreen(r.motion.x, r.motion.y).x;
+      if (Math.abs(sdx) > 0.01) r.facing = sdx < 0 ? 'left' : 'right'; // what the protocol would carry
+      r.motion.setTarget(p.x, p.y); r.moving = p.moving;
+    }
+    // Character lab: characters well outside the camera's view let go of their atlases for a while (see LabAvatar).
+    const view = this.cameras.main.worldView;
+    const M = 160;
     for (const r of this.remotes.values()) {
+      const from = gridToScreen(r.motion.x, r.motion.y);
       r.motion.step(dt);
       this.placeRemote(r);
-      r.avatar.animate(dt, r.moving, r.facing === 'left' ? -1 : 1);
-      if (!r.moving) r.avatar.face(r.facing === 'left' ? -1 : 1);
+      const to = gridToScreen(r.motion.x, r.motion.y);
+      if (r.avatar instanceof LabAvatar) {
+        const { x, y } = r.avatar.container;
+        r.avatar.setOnScreen(x > view.x - M && x < view.right + M && y > view.y - M && y < view.bottom + M);
+        // The protocol only says left or right; the 3D characters face their actual movement on screen.
+        r.avatar.animate(dt, r.moving, to.x - from.x, to.y - from.y);
+      } else {
+        r.avatar.animate(dt, r.moving, r.facing === 'left' ? -1 : 1);
+        if (!r.moving) r.avatar.face(r.facing === 'left' ? -1 : 1);
+      }
     }
     this.updateBubbles();
     this.updateProximity();
     this.updatePlotLabels();
     this.checkInteractions();
+    if (this.labHud) this.updateLabHud(deltaMs);
   }
 
   /** Plot tags show just the number from afar, and the number with the status when you are close. */
