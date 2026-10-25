@@ -61,6 +61,7 @@ Run each URL on each phone. Before each run, close the tab and open a new one.
 | D | `/play?lab=characters&labq=hd` | HD on this phone |
 | E | `/play?lab=characters&labmix=1&labn=20` | 21 characters, layered looks |
 | F | `/play?lab=painted&labn=20` | 21 painted characters (baseline for E) |
+| G | `/play?lab=characters&labmix=1` then walk far down the street and back | atlases freed off screen and loaded again on return (watch Network for re-requests and Memory for the drop) |
 
 For each run, record:
 
@@ -81,7 +82,11 @@ For each run, record:
    - Screenshots at normal zoom (power + volume down).
    - Are the outfits recognisable at SD?
    - Any flicker, jumps when turning, or characters drawn in front of buildings they are behind?
-7. **Endurance (B and E only):** play for 10 minutes. Did fps drop, did the phone get hot, did the tab reload?
+7. **Unloading (run G):**
+   - After walking away, character texture memory should drop: check DevTools → Memory or `chrome://gpu`.
+   - On return, everyone is drawn again within a few seconds, with no blank characters.
+   - Note whether the re-requested atlases come from the cache (Network panel, *Size* column).
+8. **Endurance (B and E only):** play for 10 minutes. Did fps drop, did the phone get hot, did the tab reload?
 
 ## Pass criteria (proposed; to be confirmed after the first run)
 

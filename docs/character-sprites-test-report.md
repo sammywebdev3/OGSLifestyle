@@ -305,6 +305,209 @@ The atlas download sizes include the JSON files.
 The conclusions match section 8: frame cost is unchanged, memory is the cost, and the world does not wait for atlases.
 **Real Android measurements: none yet.** The steps are in [`android-test-checklist.md`](android-test-checklist.md).
 
+## 11. Prototype hardening for device testing (added 2026-10-25)
+
+Every measurement in this section is a **browser simulation** (see the note at the top). No Android device was used.
+
+### 11.1 Body layer: neutral base clothing, no gaps (Task 1)
+
+The body layer was already the whole, unmasked skin (§ 6 correction). It now also carries neutral **base clothing**
+in muted grey knit: short shorts on every body, and a sports top on female bodies.
+
+- **How it is built.** It is cut from the body mesh itself and lifted 2.5 mm off the skin (`characters.base_clothes`),
+  so it deforms with exactly the body's weights. No simulation is needed.
+- **Where it sits.** It stays below the lowest neckline of any outfit.
+- **What changes.** A layered character is never drawn nude, whatever an outfit leaves uncovered at its edges. The
+  baked atlases are unchanged.
+
+![](character-prototype/m2/base-bodies.jpg)
+
+`tools/character-pipeline/check_layers.py` is the new automated check (§ README). It composites the layers frame by
+frame (96 frames: 8 directions × 8 walk + 4 idle) and compares them with a baked render of the same
+configuration. It reports the following per body region (head and neck, shoulders and arms, waist and hands, legs,
+feet) and per direction:
+
+- **Holes:** the baked render is opaque and the stack transparent. This fails.
+- **Extra coverage:** the stack sticks out (clipping). This fails.
+- **Colour seams:** both opaque, colour differs by more than 48/255. This fails.
+- **Base showing:** the base clothing is visible in the stack. It needs the new validation-only `LAYERS=base` pass, and it fails.
+- **Baked-mask artefacts:** reported, never a failure. These are pixels where only the body layer is visible and the baked
+  render shows background or the inside of a garment. The baked render masks skin that its outfit covers and
+  over-masks it where a garment opens while walking. There the *baked* frame has the gap and the stack is right.
+
+A frame fails when a flagged blob is larger than 12 px (holes, extra, base) or 40 px (colour) in the 4×-resolution
+frame, that is about 0.75 / 2.5 world px². Single anti-aliased edge pixels are ignored.
+
+The checker was proven on a deliberate defect. A 6-px band cut out of the neck of Tunde's body layer failed 94 of
+96 frames, and the check put all 5,260 flagged pixels in head/neck.
+
+| Combination (all on fitted bodies, 96 frames each) | Holes | Extra | Colour | Base showing | Baked-mask artefacts (not failures) | Result |
+| --- | --- | --- | --- | --- | --- | --- |
+| Tunde body + jersey/cargo + fade (vs baked Tunde) | 0 | 0 | 3 px | 0 | 403 px | **OK** |
+| Tunde body + senator kaftan + fade (vs new baked render) | 0 | 1 px | 3 px | 0 | 318 px | **OK** |
+| Amaka body + ankara dress + braided bun (vs baked Amaka) | 0 | 2 px | 6 px | 4 px | 4,474 px (dress slit) | **OK** |
+| Amaka body + crop tank/jeans + big afro (vs new baked render) | 2 px | 1 px | **73 px** | 7 px | 701 px | 22 frames over the colour limit (see below) |
+
+Largest blob per category; limits are 12 / 12 / 40 / 12 px.
+
+![](character-prototype/m2/layered-vs-baked.jpg)
+
+Heatmaps of the four worst frames per combination: baked | layered | flags. Red = hole, blue = extra, amber = colour,
+purple = base, green = baked-mask artefact.
+[Tunde jersey](character-prototype/m2/check-tunde-jersey.jpg) · [Tunde senator](character-prototype/m2/check-tunde-senator.jpg) ·
+[Amaka ankara](character-prototype/m2/check-amaka-ankara.jpg) · [Amaka crop tank](character-prototype/m2/check-amaka-tank.jpg)
+
+Problems found and fixed along the way:
+
+- **Sports top above the neckline.** The first base top showed above Amaka's strapless sweetheart neckline (shoulders/arms
+  region). It now stops below chest + 7.5 cm.
+- **Shorts through the slit.** The first shorts (to mid-thigh) showed through the dress slit while walking (waist and legs
+  regions, a 20 px blob). They now stop 5 cm below the crotch: 4 px left, under the limit.
+
+**Known difference, not fixed: the crop tank's back strap.** Seen from behind (directions N/NE/NW), the strap is
+about 2–3 world px narrower in the stack than in the baked render. There is no hole: skin shows where the baked render
+shows strap.
+
+What I ruled out:
+
+- It is not the holdout geometry. The evaluated body and its holdout copy are identical (9,514 vertices, 0.0 maximum
+  difference).
+- It is not skin grazing the strap. Pulling the holdout 3 mm inside the skin changed nothing.
+- It is not object-level holdout semantics. A shader holdout gives the same result.
+- It is not the clothes mask. An unmasked baked render still shows the wide strap.
+
+The cause is still open. The proposed fix is to derive the outfit layer from the full render with a per-object
+coverage pass (cryptomatte) instead of holdouts. That needs a small compositing step in `sprites.py`, and I have not
+started it.
+
+### 11.2 Atlas management: sharing, unloading, recovery (Task 2)
+
+Audit of milestone 1:
+
+- Atlases loaded once and were shared through Phaser's texture cache.
+- Nothing was ever freed.
+- A failed atlas left its character as a placeholder for good.
+- There was no way to change a look.
+
+New:
+
+- **`atlasRefs.ts`:** pure reference counting, unit-tested with a fake clock (8 tests). Every character holds a
+  reference to each atlas it draws. An atlas loads on its first reference. It is freed only when:
+  - nobody references it for `unloadDelayMs` (8 s in the game);
+  - and a last check finds no sprite in the scene still drawing from it.
+
+  Referencing it again within the delay cancels the unload, so there is no download and no new texture. A failed
+  load is retried by the next reference.
+- **`LabAvatar`:**
+  - **Look change.** `setLook` holds the new look's atlases before it lets go of the old ones, so shared layers never
+    drop to zero and the character never blinks out.
+  - **Off screen.** After `releaseAfterMs` off screen (4 s) the character lets go of its atlases, and takes them again
+    when it returns.
+  - **On screen.** The scene marks characters inside the camera view plus a 160 px margin as on screen. The local
+    player always keeps its atlases.
+
+Browser tests (`tests/lab/assets.spec.ts`, `failure.spec.ts`, with `?labgc=fast` so delays are 0.6 s / 0.3 s):
+
+| Check | Result |
+| --- | --- |
+| Changing the player's appearance 4 times (layered Tunde in senator + fila; jersey + fila via an AvatarSelection; Amaka body in crop tank + afro; back to baked Tunde) | passed. The player was drawn in **every** 30 ms sample (0 blinks); `tunde-hd.webp` was downloaded **once** (it stayed referenced by the remote Tunde); layers nobody wears any more were freed; no sprite points at a freed texture |
+| Looking away from everyone (10 characters, 14 atlases) | passed. Everything but the player's atlas was freed: character texture memory dropped by more than two thirds. The shared `lab-tunde` stayed, because the player still uses it |
+| Looking back | passed. Every character was drawn again; each freed atlas was loaded **exactly once** more (`loads = first loads + unloads`) |
+| A failed atlas download | passed. Placeholder with name tag, the other characters and the game unaffected; when the network works again the character retries on returning to view and is drawn |
+| 22 characters with shared layers | passed. Every file requested once, one texture per atlas, ≥ 6 characters on each shared body atlas |
+
+### 11.3 Appearance configuration (Task 3)
+
+`src/game/characterLab/appearance.ts` defines the typed `CharacterAppearance = { body, outfit, hair }` and two
+functions:
+
+- **`appearanceFor(AvatarSelection)`** maps today's avatar choices to an appearance:
+  - body type and skin tone pick the body;
+  - outfit colour picks traditional or casual wear;
+  - headwear picks the hair.
+
+  Every one of the 240 existing combinations maps to an appearance that can be drawn, and body type is always respected
+  (unit-tested). The existing options, the avatar picker and the save format are unchanged. **Nothing new is stored or
+  sent, and there is no migration.**
+- **`resolveLook(appearance)`** picks the atlases, in this order:
+  1. the baked atlas for an exact baked character;
+  2. otherwise the body's layers;
+  3. otherwise the closest look that exists.
+
+  It never swaps the body (face and skin). It reports whether the result is exact.
+
+Rendered now:
+
+| Body | Outfits | Hair |
+| --- | --- | --- |
+| Tunde | jersey, senator | fade, fila |
+| Amaka | ankara, crop tank | braided bun, big afro |
+
+Femi and Zainab are baked only.
+
+The local player, remote players and the lab cast all go through the same two functions. The lab cast is now
+described only by AvatarSelections, exactly like a real remote player. Movement, collision, depth sorting and the
+multiplayer protocol are untouched; the browser tests still check walking and collisions.
+
+### 11.4 Measurements and visual check (Tasks 4 and 5)
+
+`npm run test:lab` now runs **26 lab tests and 1 flag-off test, all passing**. `npm run test:lab:perf` (simulated,
+4-core Xeon, SwiftShader):
+
+| Scenario | Quality | Characters | All drawn | FPS* | Frame median / p95 | Character textures | Atlas download |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| phone, painted | – | 5 | 1785 ms | 30.8 | 2.6 / 4.4 ms | 0 | 0 |
+| phone, 3D, 2 GB | SD | 5 | 2229 ms | 31.1 | 2.5 / 3.8 ms | 9.7 MB | 983 KB |
+| phone, 3D, 8 GB | HD | 5 | 2328 ms | 31.0 | 2.5 / 3.7 ms | 24.3 MB | 1938 KB |
+| phone, painted | – | 21 | 1923 ms | 22.8 | 7.6 / 9.9 ms | 0 | 0 |
+| phone, 3D + layered, 2 GB | SD | 21 | 2454 ms | 20.8 | 7.7 / 11.8 ms | 20.9 MB | 2318 KB |
+| phone, 3D + layered, 8 GB | HD | 21 | 2929 ms | 21.3 | 7.6 / 11.8 ms | 51.1 MB | 4437 KB |
+
+\* Software rendering; compare rows only.
+
+What the numbers show:
+
+- **Frame cost.** The per-frame cost of the asset manager and culling is within noise: the frame median matches the
+  painted characters.
+- **Memory.** It went up for the 21-character mix because the cast now includes the Amaka layer looks (14 atlases
+  instead of 9). On a phone, characters out of view would free theirs.
+- **Run-to-run variation.** Long-task counts in the traces vary a lot between runs on this host (e.g. 19 vs 87 for the
+  same painted scenario). Use them only as a rough check.
+
+At normal gameplay zoom, the new characters next to today's painted ones, both on Kuto Street:
+
+| 3D (HD) | Painted (today) |
+| --- | --- |
+| ![](character-prototype/m2/kuto-desktop-3d.jpg) | ![](character-prototype/m2/kuto-desktop-painted.jpg) |
+| ![](character-prototype/m2/kuto-desktop-3d-zoom2.jpg) | ![](character-prototype/m2/kuto-desktop-painted-zoom2.jpg) |
+
+The phone viewport (390×844, DPR 2) at normal zoom, comparing HD, low-memory SD and painted:
+
+| HD | SD (low memory) | Painted |
+| --- | --- | --- |
+| ![](character-prototype/m2/phone-hd-phone.jpg) | ![](character-prototype/m2/phone-sd-phone.jpg) | ![](character-prototype/m2/phone-painted-phone.jpg) |
+
+Visual checks:
+
+- **SD at normal phone zoom.** Outfits stay recognisable, including the layered looks: senator vs jersey, crop tank vs
+  ankara.
+- **Feet anchoring.** Anchors pass for every new atlas: 0.000 px pivot error, 0.00 px scale spread, ≤ 1.14 px turn shift
+  (body-tunde, body-amaka, the Amaka outfit and hair layers, and both new baked references).
+- **Depth sorting.** Characters still pass behind the building and the bin and in front of the kerb, as before.
+
+### 11.5 Remaining risks
+
+- **Not tested on real phones.** No real Android device has been tested (see the checklist). GPU upload stalls when
+  atlases arrive, and reloads after unloading, are not visible in a software renderer.
+- **Re-downloads.** An atlas freed and needed again is requested again. Whether the browser cache answers it, and how
+  quickly, depends on the cache headers of the deployment and on the phone. I have not measured it. The 8 s delay
+  keeps short trips off screen free.
+- **Tank strap.** The crop tank's back strap is narrower in the layered version (11.1).
+- **Fallback looks.** Femi and Zainab have no layer sets, so their bodies fall back to their baked looks for any other outfit
+  (`exact: false`). Rendering their layers is pipeline time only, about 26 min per body on 4 cores.
+- **Bundle contents.** The lab code ships inside the game chunk of a normal build but stays inert. Production integration
+  should split it out.
+
 ## How to reproduce
 
 The pipeline is set up with `tools/character-pipeline/setup.sh` (see its README.md). Milestone 1 additions:
